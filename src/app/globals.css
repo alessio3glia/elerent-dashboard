@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Palette Elerent: verde e nero. Per cambiare tonalità basta modificare --brand. */
+:root {
+  --brand: #1fcb6e;
+  --brand-strong: #15a95a;
+  --brand-soft: rgb(31 203 110 / 0.12);
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-2: #1c1c1c;
+  --border: #2a2a2a;
+  --ink: #f4f4f4;
+  --ink-2: #b4b4b4;
+  --ink-3: #7c7c7c;
+  --critical: #f0524f;
+  --warning: #f2a93b;
+  --info: #8fb4ff;
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-critical: var(--critical);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-brand;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-brand-strong disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-line bg-surface-2 px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-ink-3 disabled:opacity-60;
+  }
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table th {
+    @apply border-b border-line px-3 py-2 text-xs font-medium tracking-wide text-ink-3 uppercase;
+  }
+  .table td {
+    @apply border-b border-line px-3 py-2.5;
+  }
+  .table tr:last-child td {
+    @apply border-b-0;
+  }
+}
