@@ -7,7 +7,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import { localDay } from "@/lib/dates";
-import { recomputeAll } from "@/lib/pipeline";
+import { recomputeAll, runBackfill } from "@/lib/pipeline";
 import { generateDailyTasks } from "@/lib/rules/run";
 
 const optionalText = z.string().trim().transform((s) => s || null);
@@ -78,5 +78,12 @@ export async function recompute() {
   await requireAdmin();
   await recomputeAll();
   await generateDailyTasks(localDay());
+  revalidatePath("/", "layout");
+}
+
+/** Un blocco dell'import storico (circa 4 minuti). Si ripete finché non risulta completato. */
+export async function importHistory(form: FormData) {
+  await requireAdmin();
+  await runBackfill(240_000, form.get("restart") === "1");
   revalidatePath("/", "layout");
 }

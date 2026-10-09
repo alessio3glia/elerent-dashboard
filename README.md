@@ -42,7 +42,8 @@ Altri comandi: `npm run daily` (job giornaliero a mano), `npm test`, `npm run ty
 1. Importa la repo su Vercel e collega un database Postgres (Neon dal Marketplace, imposta DATABASE_URL).
 2. Imposta le altre variabili di `.env.example`: ATOM_EMAIL, ATOM_PASSWORD, SESSION_SECRET, CRON_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD.
 3. Il build applica da solo le migrazioni. Al primo accesso con ADMIN_EMAIL/ADMIN_PASSWORD viene creato l'amministratore; gli altri accessi si creano da Impostazioni.
-4. Import dello storico: `npm run backfill` da una macchina con lo stesso DATABASE_URL.
+4. Import dello storico: da **Impostazioni → Import dello storico Atom** (lavora a blocchi di 4 minuti, si preme “Continua” finché non è completato; se resta a metà lo porta avanti il cron). In alternativa `npm run backfill` da una macchina con lo stesso DATABASE_URL.
+6. **Impostazioni → Diagnostica Atom** prova il collegamento e mostra formati di date e importi, ordine delle corse e stati dei veicoli (dati personali oscurati).
 5. Il cron giornaliero è già configurato in `vercel.json`.
 
 ## Da verificare con i dati reali di Atom

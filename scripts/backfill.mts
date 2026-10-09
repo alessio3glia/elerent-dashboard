@@ -2,5 +2,6 @@
 import { closeDb } from "@/lib/db";
 import { runBackfill } from "@/lib/pipeline";
 
-console.log(JSON.stringify(await runBackfill(), null, 2));
+// Da riga di comando non ci sono limiti di durata: un unico blocco lungo
+console.log(JSON.stringify(await runBackfill(24 * 3_600_000, true), null, 2));
 await closeDb();

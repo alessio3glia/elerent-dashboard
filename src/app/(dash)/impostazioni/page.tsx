@@ -1,17 +1,22 @@
 import { asc } from "drizzle-orm";
-import { deleteUser, recompute } from "@/app/actions/settings";
+import { deleteUser, importHistory, recompute } from "@/app/actions/settings";
 import { Card, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import { lastSync, listCities } from "@/lib/queries";
+import { getBackfillState } from "@/lib/sync/sync";
+
+// L'import dello storico lavora a blocchi di circa 4 minuti
+export const maxDuration = 300;
 import { CityForm, UserForm } from "./forms";
 
 export default async function SettingsPage() {
   const me = await requireAdmin();
-  const [cities, users, sync] = await Promise.all([
+  const [cities, users, sync, backfill] = await Promise.all([
     listCities(),
     db.select().from(schema.appUsers).orderBy(asc(schema.appUsers.name)),
     lastSync(),
+    getBackfillState(),
   ]);
   const counts = sync?.counts as { vehicles?: number; vehiclesWithoutCity?: number; rides?: number; customers?: number } | null;
   return (
@@ -31,13 +36,34 @@ export default async function SettingsPage() {
               "Nessuna sincronizzazione ancora eseguita. Parte ogni mattina alle 6."
             )}
           </div>
-          <form action={recompute}>
-            <button className="btn-secondary">Ricalcola KPI e task</button>
-          </form>
+          <div className="flex gap-2">
+            <a href="/impostazioni/diagnostica" className="btn-secondary">Diagnostica Atom</a>
+            <form action={recompute}>
+              <button className="btn-secondary">Ricalcola KPI e task</button>
+            </form>
+          </div>
         </div>
         <p className="mt-3 text-xs text-ink-3">
           Veicoli e corse vengono assegnati alla città più vicina il cui raggio li contiene. Dopo aver cambiato aree, % o fee usa “Ricalcola”.
         </p>
+      </Card>
+
+      <Card title="Import dello storico Atom" className="mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+          <div className="text-ink-2">
+            {!backfill && "Non ancora avviato. Configura prima le città (centro e raggio), poi avvia l'import."}
+            {backfill && !backfill.done && `In corso: ${backfill.rides.toLocaleString("it-IT")} corse importate. Premi “Continua” finché non risulta completato.`}
+            {backfill?.done && `Completato: ${backfill.rides.toLocaleString("it-IT")} corse importate.`}
+          </div>
+          <form action={importHistory} className="flex gap-2">
+            {backfill?.done ? (
+              <button name="restart" value="1" className="btn-secondary">Reimporta tutto</button>
+            ) : (
+              <button className="btn-primary">{backfill ? "Continua import" : "Avvia import"}</button>
+            )}
+          </form>
+        </div>
+        <p className="mt-3 text-xs text-ink-3">Ogni blocco dura circa 4 minuti: la pagina resta in caricamento finché il blocco non finisce.</p>
       </Card>
 
       <Card title="Città e affiliati" className="mb-6">

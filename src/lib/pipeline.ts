@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 import { computeMetrics, firstRideDay } from "@/lib/metrics/compute";
 import { generateDailyTasks } from "@/lib/rules/run";
-import { syncFromAtom } from "@/lib/sync/sync";
+import { backfillStep, syncFromAtom } from "@/lib/sync/sync";
 
 /** Corse rimaste senza città (es. città aggiunta dopo): le assegna in base al veicolo. */
 export async function assignMissingCities() {
@@ -23,15 +23,16 @@ export async function runDaily() {
   return { sync, metrics, tasks };
 }
 
-/** Import completo dello storico Atom e ricalcolo di tutti i KPI. */
-export async function runBackfill() {
-  const sync = await syncFromAtom({ fullHistory: true });
-  await assignMissingCities();
-  const today = localDay();
-  const first = await firstRideDay();
-  const metrics = first ? await computeMetrics(first, addDays(today, -1)) : null;
-  const tasks = await generateDailyTasks(today);
-  return { sync, metrics, tasks };
+/**
+ * Import dello storico a blocchi. Ogni chiamata lavora per `budgetMs` e riprende da dove era arrivata;
+ * all'ultimo blocco ricalcola tutti i KPI e le task di oggi.
+ */
+export async function runBackfill(budgetMs = 240_000, restart = false) {
+  const state = await backfillStep(budgetMs, restart);
+  if (!state.done) return { state };
+  const metrics = await recomputeAll();
+  const tasks = await generateDailyTasks(localDay());
+  return { state, metrics, tasks };
 }
 
 /** Ricalcolo dei KPI senza chiamare Atom (dopo aver cambiato aree, % o fee). */

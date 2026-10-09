@@ -200,3 +200,10 @@ export type City = typeof cities.$inferSelect;
 export type DailyMetric = typeof dailyMetrics.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
+
+/** Stato persistente dei job lunghi (es. import dello storico a blocchi). */
+export const syncState = pgTable("sync_state", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

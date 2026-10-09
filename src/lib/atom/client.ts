@@ -1,6 +1,8 @@
 // Client in sola lettura per gli endpoint "Admin dashboard" di Atom.
 // Doc: https://app.rideatom.com/api/docs
 
+import { parseDate } from "./parse";
+
 export type AtomAccount = { email: string; password: string; baseUrl?: string };
 
 export type AtomRide = {
@@ -68,24 +70,36 @@ export class AtomClient {
     this.token = body.access_token;
   }
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: unknown, retry = true): Promise<T> {
+  /** Schema dell'header Authorization: "Bearer <token>" oppure il token da solo. Scoperto al primo 401. */
+  private scheme: string | null = process.env.ATOM_AUTH_SCHEME ?? "Bearer";
+  private schemeVerified = false;
+
+  async request<T>(method: "GET" | "POST", path: string, body?: unknown, attempt = 0): Promise<T> {
     if (!this.token) await this.login();
-    const scheme = process.env.ATOM_AUTH_SCHEME ?? "Bearer";
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: scheme ? `${scheme} ${this.token}` : this.token!,
+        Authorization: this.scheme ? `${this.scheme} ${this.token}` : this.token!,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (res.status === 401 && retry) {
+    if (res.status === 401 && attempt === 0 && !this.schemeVerified) {
+      this.scheme = this.scheme ? null : "Bearer";
+      return this.request(method, path, body, 1);
+    }
+    if (res.status === 401 && attempt <= 1) {
       this.token = null;
-      return this.request(method, path, body, false);
+      return this.request(method, path, body, 2);
     }
     if (!res.ok) throw new Error(`Atom ${path} ha risposto ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    this.schemeVerified = true;
     return (await res.json()) as T;
+  }
+
+  get authScheme() {
+    return this.scheme ?? "(solo token)";
   }
 
   /** Tutti i veicoli della flotta (paginazione per numero di pagina). */
@@ -102,24 +116,29 @@ export class AtomClient {
     return out;
   }
 
+  /** Una pagina di corse concluse; `bookmark` null = la prima. */
+  async ridesPage(bookmark: string | null) {
+    const res = await this.request<{ data: AtomRide[]; has_next_page: boolean; bookmark_next: string }>(
+      "POST",
+      "/api/v2/admin/rides",
+      { ride_status: "ENDED", page_length: 100, page_bookmark: bookmark },
+    );
+    return { rides: res.data, next: res.has_next_page && res.data.length > 0 ? res.bookmark_next : null };
+  }
+
   /**
    * Corse concluse, dalla più recente, finché non si arriva prima di `since`.
-   * Assume che Atom le ordini dalla più recente (da verificare sui dati reali).
+   * Assume che Atom le ordini dalla più recente (verificabile da Impostazioni → Diagnostica).
    */
-  async ridesSince(since: Date | null, maxPages = 200): Promise<AtomRide[]> {
+  async ridesSince(since: Date, maxPages = 200): Promise<AtomRide[]> {
     const out: AtomRide[] = [];
     let bookmark: string | null = null;
     for (let i = 0; i < maxPages; i++) {
-      const res: { data: AtomRide[]; has_next_page: boolean; bookmark_next: string } = await this.request(
-        "POST",
-        "/api/v2/admin/rides",
-        { ride_status: "ENDED", page_length: 100, page_bookmark: bookmark },
-      );
-      out.push(...res.data);
-      const oldest = res.data.at(-1)?.start_time;
-      if (!res.has_next_page || res.data.length === 0) break;
-      if (since && oldest && new Date(oldest.replace(" ", "T")) < since) break;
-      bookmark = res.bookmark_next;
+      const page = await this.ridesPage(bookmark);
+      out.push(...page.rides);
+      const oldest = parseDate(page.rides.at(-1)?.start_time);
+      if (!page.next || (oldest && oldest < since)) break;
+      bookmark = page.next;
     }
     return out;
   }
