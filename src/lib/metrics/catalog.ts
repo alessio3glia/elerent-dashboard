@@ -32,12 +32,12 @@ export const METRICS: MetricDef[] = [
   },
   {
     key: "elerentRevenue", label: "Ricavo Elerent", format: "eur", higherIsBetter: true,
-    description: "10% del fatturato più 15 € al mese per ogni veicolo con almeno una corsa negli ultimi 30 giorni (fee ripartita per giorno). Percentuale e fee si cambiano per città da Impostazioni.",
+    description: "10% del fatturato più 15 € al mese per ogni veicolo pagante (almeno una corsa nel mese di calendario). La fee di un veicolo si conta nel giorno della sua prima corsa del mese. Percentuale e fee si cambiano per città da Impostazioni.",
     daily: (r) => r.elerentRevenue, total: (rows) => s(rows, (r) => r.elerentRevenue),
   },
   {
-    key: "feeVehicles", label: "Veicoli attivi (fee)", format: "num", higherIsBetter: true,
-    description: "Veicoli con almeno una corsa negli ultimi 30 giorni: sono quelli su cui Elerent incassa la fee mensile.",
+    key: "feeVehicles", label: "Veicoli paganti del mese", format: "num", higherIsBetter: true,
+    description: "Veicoli con almeno una corsa dal primo del mese a quel giorno: sono quelli su cui Elerent incassa la fee mensile.",
     daily: (r) => r.feeVehicles, total: (rows) => (rows.length ? rows[rows.length - 1].feeVehicles : null),
   },
   {

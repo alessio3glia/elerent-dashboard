@@ -1,10 +1,14 @@
-import { sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { eq, sql } from "drizzle-orm";
+import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 import { computeMetrics, firstRideDay } from "@/lib/metrics/compute";
 import { generateDailyTasks } from "@/lib/rules/run";
 import { nameCities, updateCityActivity } from "@/lib/sync/cities";
+import { rescanSubscriptions } from "@/lib/sync/subscriptions";
 import { backfillStep, slugify, syncFromAtom } from "@/lib/sync/sync";
+
+const { syncState } = schema;
+const FULL_RECOMPUTE_KEY = "metrics_v2_full";
 
 /** Corse rimaste senza città (es. città aggiunta dopo): le assegna in base al veicolo. */
 export async function assignMissingCities() {
@@ -17,11 +21,16 @@ export async function assignMissingCities() {
 /** Job giornaliero: sync incrementale, KPI degli ultimi 3 giorni, task di oggi. */
 export async function runDaily() {
   const sync = await syncFromAtom();
+  // Una volta al giorno si rilegge tutto lo storico abbonamenti (la sync live prende solo i nuovi).
+  await rescanSubscriptions();
   await nameCities(slugify);
   await assignMissingCities();
   await updateCityActivity();
   const today = localDay();
-  const metrics = await computeMetrics(addDays(today, -3), addDays(today, -1));
+  // Calcolo KPI cambiato (fee sui veicoli paganti del mese): una volta si ricalcola tutto lo storico.
+  const [full] = await db.select().from(syncState).where(eq(syncState.key, FULL_RECOMPUTE_KEY));
+  const metrics = full ? await computeMetrics(addDays(today, -3), addDays(today, -1)) : await recomputeAll();
+  if (!full) await db.insert(syncState).values({ key: FULL_RECOMPUTE_KEY, value: { at: new Date().toISOString() }, updatedAt: new Date() }).onConflictDoNothing();
   const tasks = await generateDailyTasks(today);
   return { sync, metrics, tasks };
 }

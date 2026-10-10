@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Card, Delta, PageHeader } from "@/components/ui";
 import { TrendChart } from "@/components/trend-chart";
-import { addDays, formatDay } from "@/lib/dates";
+import { addDays, formatDay, localDay } from "@/lib/dates";
 import { METRICS, formatMetric, metricByKey } from "@/lib/metrics/catalog";
 import { inRange, sumByDay, type Totals } from "@/lib/metrics/aggregate";
+import { fleetStatusThisMonth, SIGNAL_HOURS } from "@/lib/fleet-status";
+import { monthLabel } from "@/lib/metrics/monthly";
 import { firstMetricDay, lastMetricDay, listCities, metricsBetween } from "@/lib/queries";
 
 const RANGES = [
@@ -32,7 +34,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
   const range = RANGES.find((r) => r.key === sp.periodo) ?? RANGES[1];
   const citySlug = typeof sp.citta === "string" ? sp.citta : "tutte";
 
-  const [cities, last, first] = await Promise.all([listCities(), lastMetricDay(), firstMetricDay()]);
+  const [cities, last, first, fleet] = await Promise.all([listCities({ all: true }), lastMetricDay(), firstMetricDay(), fleetStatusThisMonth()]);
   const days = range.days ?? (first ? Math.round((Date.parse(last) - Date.parse(first)) / 86_400_000) + 1 : 30);
   const from = addDays(last, -(days - 1));
   const prevFrom = addDays(from, -days);
@@ -60,7 +62,16 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
       const p = range.days ? metric.total(inRange(mine, prevFrom, addDays(from, -1))) : null;
       return { city: c, value: v, delta: v !== null && p ? (v - p) / p : null };
     })
+    .filter((r) => r.city.active || (r.value ?? 0) > 0)
     .sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
+
+  const fleetRows = fleet
+    .filter((r) => !selected || r.city_id === selected.id)
+    .map((r) => ({ ...r, city: cities.find((c) => c.id === r.city_id) }))
+    .filter((r) => r.city?.active || r.paganti > 0)
+    .sort((a, b) => b.paganti - a.paganti);
+  const fleetTotal = fleetRows.reduce((a, r) => ({ paganti: a.paganti + r.paganti, operativi: a.operativi + r.operativi, non_attivi: a.non_attivi + r.non_attivi }), { paganti: 0, operativi: 0, non_attivi: 0 });
+  const month = monthLabel(localDay().slice(0, 7));
 
   const href = (patch: Record<string, string>) => {
     const q = new URLSearchParams({ metrica: metric.key, periodo: range.key, citta: citySlug, ...patch });
@@ -72,6 +83,34 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
       <PageHeader title="Analytics" subtitle={`${formatDay(from)} – ${formatDay(last)}${selected ? ` · ${selected.name}` : " · tutta la rete"}`}>
         <Link href="/analytics/mensile" className="btn-secondary">Confronto anno su anno</Link>
       </PageHeader>
+
+      <Card title={`Veicoli di ${month}${selected ? ` · ${selected.name}` : ""}`} className="mb-6 overflow-x-auto">
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <FleetBox label="Paganti" value={fleetTotal.paganti} hint="almeno una corsa dal 1° del mese: su questi si paga la fee" strong />
+          <FleetBox label="Operativi senza corse" value={fleetTotal.operativi} hint={`mandano segnale (ultime ${SIGNAL_HOURS} ore) ma nessuna corsa nel mese`} />
+          <FleetBox label="Non attivi" value={fleetTotal.non_attivi} hint="nessuna corsa nel mese e nessun segnale" />
+        </div>
+        <table className="table tabular">
+          <thead>
+            <tr>
+              <th>Città</th>
+              <th className="text-right">Paganti</th>
+              <th className="text-right">Operativi senza corse</th>
+              <th className="text-right">Non attivi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fleetRows.map((r) => (
+              <tr key={r.city_id ?? "none"}>
+                <td>{r.city ? r.city.name : "Senza città"}{r.city && !r.city.active && <span className="ml-2 text-xs text-ink-3">non operativa</span>}</td>
+                <td className="text-right font-medium text-brand">{formatMetric(r.paganti, "num")}</td>
+                <td className="text-right">{formatMetric(r.operativi, "num")}</td>
+                <td className="text-right text-ink-3">{formatMetric(r.non_attivi, "num")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {METRICS.map((m) => (
@@ -99,7 +138,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
         <Link href={href({ citta: "tutte" })} className={`rounded-lg px-3 py-1.5 text-sm ${!selected ? "bg-surface-2 text-ink" : "text-ink-3 hover:text-ink"}`}>
           Tutte le città
         </Link>
-        {cities.map((c) => (
+        {cities.filter((c) => c.active || c.id === selected?.id).map((c) => (
           <Link key={c.id} href={href({ citta: c.slug })} className={`rounded-lg px-3 py-1.5 text-sm ${selected?.id === c.id ? "bg-surface-2 text-ink" : "text-ink-3 hover:text-ink"}`}>
             {c.name}
           </Link>
@@ -144,5 +183,15 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
         </Card>
       </div>
     </>
+  );
+}
+
+function FleetBox({ label, value, hint, strong }: { label: string; value: number; hint: string; strong?: boolean }) {
+  return (
+    <div className={`rounded-lg p-4 ${strong ? "bg-brand-soft" : "bg-surface-2"}`}>
+      <div className="text-sm text-ink-2">{label}</div>
+      <div className={`tabular mt-1 text-3xl font-semibold ${strong ? "text-brand" : ""}`}>{formatMetric(value, "num")}</div>
+      <div className="mt-1 text-xs text-ink-3">{hint}</div>
+    </div>
   );
 }

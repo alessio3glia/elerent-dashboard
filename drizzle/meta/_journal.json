@@ -15,6 +15,13 @@
       "when": 1791627914146,
       "tag": "0001_fee_veicoli_attivi",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791657179634,
+      "tag": "0002_segnale_veicoli_abbonamenti",
+      "breakpoints": true
     }
   ]
 }

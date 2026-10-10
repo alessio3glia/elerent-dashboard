@@ -14,6 +14,21 @@ function toInt(value: unknown): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+/** Campi in cui Atom può riportare l'ultimo segnale del veicolo (il nome non è documentato). */
+export const SIGNAL_FIELDS = [
+  "last_signal", "last_signal_date", "last_seen", "last_seen_at", "last_connection", "last_connection_date", "last_online",
+  "last_heartbeat", "last_ping", "last_update", "last_update_date", "last_location_update", "location_updated_at",
+  "last_position_date", "last_gps_date", "iot_last_update", "iot_updated_at", "last_iot_update", "updated_at", "last_data_date",
+];
+
+export function signalDate(v: Record<string, unknown>): Date | null {
+  for (const field of SIGNAL_FIELDS) {
+    const date = parseDate(v[field]);
+    if (date && date.getTime() <= Date.now() + 3_600_000) return date;
+  }
+  return null;
+}
+
 export function mapVehicle(v: AtomVehicle, areas: CityArea[], previousCityId: number | null) {
   const lat = v.coordinates?.latitude ?? null;
   const lng = v.coordinates?.longitude ?? null;
@@ -28,6 +43,7 @@ export function mapVehicle(v: AtomVehicle, areas: CityArea[], previousCityId: nu
     lng,
     totalRides: toInt(v.total_rides),
     lastParkDate: parseDate(v.last_park_date),
+    lastSignalAt: signalDate(v),
   };
 }
 
@@ -54,6 +70,8 @@ export function mapRide(r: AtomRide, vehicleCity: Map<number, number | null>, ar
     chargedBalance: parseNumber(r.charged_balance),
     chargedBonus: parseNumber(r.charged_bonus),
     withSubscription: r.paid_with_subscription ? !["", "-", "no", "false"].includes(r.paid_with_subscription.toLowerCase()) : null,
+    endLat: Number.isFinite(endLoc?.lat) && endLoc?.lat !== 0 ? endLoc!.lat : null,
+    endLng: Number.isFinite(endLoc?.lng) && endLoc?.lng !== 0 ? endLoc!.lng : null,
   };
 }
 

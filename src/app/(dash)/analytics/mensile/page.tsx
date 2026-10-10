@@ -25,7 +25,7 @@ export default async function MonthlyPage({ searchParams }: PageProps<"/analytic
   const partialMonths = [current, sameMonthLastYear(current)];
 
   const [cities, all, partial] = await Promise.all([
-    listCities(),
+    listCities({ all: true }),
     monthlyFromRides(),
     monthlyFromRides({ months: partialMonths, untilDay }),
   ]);

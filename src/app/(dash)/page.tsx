@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Card, Delta, PageHeader, PriorityBadge, StatTile } from "@/components/ui";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { TrendChart } from "@/components/trend-chart";
-import { getLiveState, todayByCity } from "@/lib/live";
+import { LiveMapLoader } from "@/components/live-map-loader";
+import { liveVehicles, recentRideEnds } from "@/lib/fleet-status";
+import { getLiveState, todayByCity, todaySubscriptionsByCity } from "@/lib/live";
 import { addDays, formatDay, localDay } from "@/lib/dates";
 import { METRICS, formatMetric } from "@/lib/metrics/catalog";
 import { inRange, sumByDay } from "@/lib/metrics/aggregate";
@@ -13,7 +15,7 @@ const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b
 
 export default async function OverviewPage() {
   const last = await lastMetricDay();
-  const [cities, rows, alerts, todayTasks, sync, today, live] = await Promise.all([
+  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
@@ -21,7 +23,15 @@ export default async function OverviewPage() {
     lastSync(),
     todayByCity(),
     getLiveState(),
+    liveVehicles(),
+    recentRideEnds(30),
+    todaySubscriptionsByCity(),
   ]);
+  const subsToday = todaySubs.reduce((a, r) => ({ n: a.n + r.n, revenue: a.revenue + r.revenue }), { n: 0, revenue: 0 });
+  const nowMs = Date.now();
+  const mapRides = rideEnds.map((r) => ({ id: r.id, lat: r.lat, lng: r.lng, price: r.price, minutesAgo: (nowMs - new Date(r.end_time).getTime()) / 60_000 }));
+  const counts = { corsa: 0, operativo: 0, spento: 0 };
+  for (const v of mapVehicles) counts[v.state]++;
   const todayTotal = today.reduce(
     (a, r) => ({ rides: a.rides + r.rides, revenue: a.revenue + r.revenue, vehicles: a.vehicles + r.vehicles }),
     { rides: 0, revenue: 0, vehicles: 0 },
@@ -116,6 +126,11 @@ export default async function OverviewPage() {
           <div><div className="text-xs text-ink-3">Corse</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.rides, "num")}</div></div>
           <div><div className="text-xs text-ink-3">Fatturato</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.revenue, "eur")}</div></div>
           <div><div className="text-xs text-ink-3">Veicoli usati</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.vehicles, "num")}</div></div>
+          <div>
+            <div className="text-xs text-ink-3">Abbonamenti venduti</div>
+            <div className="tabular text-3xl font-semibold">{formatMetric(subsToday.n, "num")}</div>
+            {subsToday.revenue > 0 && <div className="tabular text-xs text-ink-3">{formatMetric(subsToday.revenue, "eur")}</div>}
+          </div>
           <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
             {todayRows.slice(0, 12).map((r) => (
               <Link key={r.city.id} href={`/citta/${r.city.slug}`} className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs hover:text-brand">
@@ -124,6 +139,21 @@ export default async function OverviewPage() {
             ))}
           </div>
         </div>
+      </Card>
+
+      <Card
+        title="Mappa live della flotta"
+        action={
+          <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
+            <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#39ff8f] shadow-[0_0_6px_#39ff8f]" />In corsa {counts.corsa}</span>
+            <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand" />Operativi {counts.operativo}</span>
+            <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#5a5a5a]" />Senza segnale {counts.spento}</span>
+            <span>{mapRides.length} corse finite negli ultimi 30 min</span>
+          </span>
+        }
+        className="mb-6"
+      >
+        <LiveMapLoader vehicles={mapVehicles} rides={mapRides} />
       </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">

@@ -28,7 +28,7 @@ export const cities = pgTable("cities", {
   radiusKm: doublePrecision("radius_km").notNull().default(15),
   /** Percentuale Elerent sul fatturato, es. 10 = 10%. */
   revenueSharePct: doublePrecision("revenue_share_pct").notNull().default(10),
-  /** Fee Elerent al mese per veicolo attivo (almeno una corsa negli ultimi 30 giorni), in euro. */
+  /** Fee Elerent al mese per veicolo pagante (almeno una corsa nel mese di calendario), in euro. */
   feePerVehicleMonth: doublePrecision("fee_per_vehicle_month").notNull().default(15),
   active: boolean("active").notNull().default(true),
   lastContactAt: timestamp("last_contact_at", { withTimezone: true }),
@@ -50,6 +50,10 @@ export const vehicles = pgTable(
     totalRides: integer("total_rides"),
     lastParkDate: timestamp("last_park_date", { withTimezone: true }),
     lastRideAt: timestamp("last_ride_at", { withTimezone: true }),
+    /** Ultimo segnale ricevuto dal veicolo (campo Atom se c'è, altrimenti ultimo spostamento o ultima corsa). */
+    lastSignalAt: timestamp("last_signal_at", { withTimezone: true }),
+    /** Ultima volta che la posizione è cambiata tra due sincronizzazioni: serve per la mappa live. */
+    movedAt: timestamp("moved_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("vehicles_city").on(t.cityId)],
@@ -87,9 +91,13 @@ export const rides = pgTable(
     chargedBalance: doublePrecision("charged_balance"),
     chargedBonus: doublePrecision("charged_bonus"),
     withSubscription: boolean("with_subscription"),
+    /** Punto di arrivo: serve per la mappa live e per le mappe della domanda. */
+    endLat: doublePrecision("end_lat"),
+    endLng: doublePrecision("end_lng"),
   },
   (t) => [
     index("rides_city_start").on(t.cityId, t.startTime),
+    index("rides_start").on(t.startTime),
     index("rides_customer").on(t.customerAtomId),
   ],
 );
@@ -113,6 +121,28 @@ export const customers = pgTable(
   (t) => [index("customers_registered").on(t.registeredAt)],
 );
 
+/** Abbonamenti acquistati dagli utenti (storico acquisti Atom), assegnati alla città dove sono stati comprati. */
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    atomId: text("atom_id").notNull().unique(),
+    cityId: integer("city_id").references(() => cities.id),
+    customerAtomId: integer("customer_atom_id"),
+    name: text("name"),
+    price: doublePrecision("price"),
+    purchasedAt: timestamp("purchased_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    status: text("status"),
+    /** Città o zona scritta da Atom sull'acquisto, se c'è. */
+    place: text("place"),
+    /** Campi originali (senza dati personali), per rileggerli se Atom cambia formato. */
+    raw: jsonb("raw"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("subscriptions_purchased").on(t.purchasedAt), index("subscriptions_city").on(t.cityId, t.purchasedAt)],
+);
+
 /** KPI giornalieri per città, calcolati dai dati sincronizzati. */
 export const dailyMetrics = pgTable(
   "daily_metrics",
@@ -127,7 +157,7 @@ export const dailyMetrics = pgTable(
     /** Veicoli in strada (stato operativo) nella foto del giorno. */
     activeVehicles: integer("active_vehicles").notNull().default(0),
     vehiclesWithRide: integer("vehicles_with_ride").notNull().default(0),
-    /** Veicoli con almeno una corsa negli ultimi 30 giorni: sono quelli su cui si paga la fee. */
+    /** Veicoli paganti: almeno una corsa dal primo del mese a quel giorno (base della fee). */
     feeVehicles: integer("fee_vehicles").notNull().default(0),
     idleVehicles: integer("idle_vehicles").notNull().default(0),
     lowBattery: integer("low_battery").notNull().default(0),
@@ -199,6 +229,7 @@ export const syncRuns = pgTable("sync_runs", {
 });
 
 export type City = typeof cities.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;
 export type DailyMetric = typeof dailyMetrics.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;

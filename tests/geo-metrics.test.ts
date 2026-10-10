@@ -18,9 +18,9 @@ describe("cityForPoint", () => {
 });
 
 describe("ricavo Elerent", () => {
-  it("somma 10% del fatturato e la fee giornaliera dei veicoli attivi nei 30 giorni", () => {
-    // 10% di 1000 € + 30 veicoli × 15 €/mese / 31 giorni
-    expect(elerentRevenue(1000, 30, 10, 15, "2026-10-08")).toBeCloseTo(100 + (30 * 15) / 31);
+  it("somma 10% del fatturato e la fee mensile dei veicoli alla prima corsa del mese", () => {
+    // 10% di 1000 € + 3 veicoli paganti nuovi oggi × 15 €
+    expect(elerentRevenue(1000, 3, 10, 15)).toBeCloseTo(145);
   });
 });
 
@@ -36,7 +36,8 @@ describe("buildMetric", () => {
     vehiclesWithRideToday: new Set([1]),
     vehiclesWithRecentRide: new Set([1]),
     vehiclesActiveLast7: 5,
-    vehiclesActiveLast30: 8,
+    vehiclesPayingMonth: 8,
+    newPayingToday: 0,
   };
 
   it("usa la foto della flotta quando c'è", () => {

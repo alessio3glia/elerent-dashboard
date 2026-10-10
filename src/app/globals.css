@@ -70,3 +70,12 @@ body {
     @apply border-b-0;
   }
 }
+
+/* Mappa live: veicoli in corsa e corse appena finite "si accendono". */
+@keyframes ride-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px #39ff8f); }
+  50% { filter: drop-shadow(0 0 10px #39ff8f); }
+}
+.ride-glow {
+  animation: ride-glow 1.6s ease-in-out infinite;
+}
