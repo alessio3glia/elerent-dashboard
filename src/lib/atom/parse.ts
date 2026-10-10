@@ -76,7 +76,7 @@ export function parseBattery(value: unknown): number | null {
  * Visti sui dati reali: READY, NOT_READY, NEED_SERVICE, NEED_INVESTIGATION, CHARGING, TRANSPORTATION, STOLEN.
  * Gli stati di corsa/prenotazione contano come in strada.
  */
-const ON_STREET = ["READY", "IN_USE", "IN_RIDE", "RIDING", "RESERVED", "BOOKED", "PAUSED", "AVAILABLE"];
+export const ON_STREET = ["READY", "IN_USE", "IN_RIDE", "RIDING", "RESERVED", "BOOKED", "PAUSED", "AVAILABLE"];
 
 export function isOnStreet(status: string | null | undefined): boolean {
   if (!status) return false;

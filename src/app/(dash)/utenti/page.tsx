@@ -7,7 +7,7 @@ import { listCities } from "@/lib/queries";
 export default async function CustomersPage({ searchParams }: PageProps<"/utenti">) {
   const sp = await searchParams;
   const segment = (Object.keys(SEGMENTS).includes(String(sp.segmento)) ? sp.segmento : "in_calo") as Segment;
-  const cities = await listCities();
+  const cities = await listCities({ all: true });
   const city = cities.find((c) => c.slug === sp.citta);
   const [summary, list, registered] = await Promise.all([segmentSummary(city?.id), customersInSegment(segment, city?.id), registeredCustomers()]);
   const withRides = summary.filter((s) => s.segment !== "mai_attivi").reduce((a, s) => a + s.customers, 0);

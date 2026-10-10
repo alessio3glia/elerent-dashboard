@@ -47,6 +47,8 @@ export type AtomVehicle = {
   total_rides?: number;
   status?: string;
   last_park_date?: string | null;
+  /** Altri campi (tra cui l'ultimo segnale, il cui nome non è documentato). */
+  [key: string]: unknown;
 };
 
 export type AtomCustomer = {

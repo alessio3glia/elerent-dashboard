@@ -65,10 +65,14 @@ export async function createMissingCities(points: { lat: number; lng: number }[]
 }
 
 /** Posizione attuale dei veicoli + foto della flotta. Restituisce veicolo → città. */
-export async function syncVehicles(client: AtomClient, initialAreas: CityArea[]) {
+export async function syncVehicles(client: AtomClient, initialAreas: CityArea[], opts: { snapshot?: boolean } = {}) {
   const now = new Date();
   const previous = new Map(
-    (await db.select({ atomId: vehicles.atomId, cityId: vehicles.cityId }).from(vehicles)).map((v) => [v.atomId, v.cityId]),
+    (
+      await db
+        .select({ atomId: vehicles.atomId, cityId: vehicles.cityId, lat: vehicles.lat, lng: vehicles.lng, movedAt: vehicles.movedAt, lastSignalAt: vehicles.lastSignalAt })
+        .from(vehicles)
+    ).map((v) => [v.atomId, v]),
   );
   const atomVehicles = await client.vehicles();
   // Atom restituisce solo la città selezionata nella sua dashboard: se la flotta crolla, l'account non è su "Global".
@@ -82,7 +86,17 @@ export async function syncVehicles(client: AtomClient, initialAreas: CityArea[])
     .filter((p): p is { lat: number; lng: number } => p !== null && Number.isFinite(p.lat) && (p.lat !== 0 || p.lng !== 0));
   const newCities = await createMissingCities(points, initialAreas);
   const areas = newCities.length ? await activeAreas() : initialAreas;
-  const rows = atomVehicles.map((v) => mapVehicle(v, areas, previous.get(v.id) ?? null));
+  const rows = atomVehicles.map((v) => {
+    const row = mapVehicle(v, areas, previous.get(v.id)?.cityId ?? null);
+    const before = previous.get(v.id);
+    // Spostato di più di 30 m dall'ultima sincronizzazione: è in movimento e sta mandando segnale.
+    const moved =
+      !!before && before.lat !== null && before.lng !== null && row.lat !== null && row.lng !== null &&
+      distanceKm({ lat: row.lat, lng: row.lng }, { lat: before.lat, lng: before.lng }) > 0.03;
+    const movedAt = moved ? now : (before?.movedAt ?? null);
+    const signals = [row.lastSignalAt, movedAt, before?.lastSignalAt ?? null].filter((d): d is Date => !!d);
+    return { ...row, movedAt, lastSignalAt: signals.length ? new Date(Math.max(...signals.map((d) => d.getTime()))) : null };
+  });
   for (const part of chunks(rows)) {
     await db
       .insert(vehicles)
@@ -98,12 +112,17 @@ export async function syncVehicles(client: AtomClient, initialAreas: CityArea[])
           lng: excluded("lng"),
           totalRides: excluded("total_rides"),
           lastParkDate: excluded("last_park_date"),
+          lastSignalAt: excluded("last_signal_at"),
+          movedAt: excluded("moved_at"),
           updatedAt: excluded("updated_at"),
         },
       });
-    await db.insert(vehicleSnapshots).values(
-      part.map((v) => ({ cityId: v.cityId, takenAt: now, atomId: v.atomId, status: v.status, battery: v.battery, lat: v.lat, lng: v.lng })),
-    );
+    // Foto della flotta per i KPI giornalieri: la sync live (ogni pochi minuti) non la salva, per non riempire il database.
+    if (opts.snapshot !== false) {
+      await db.insert(vehicleSnapshots).values(
+        part.map((v) => ({ cityId: v.cityId, takenAt: now, atomId: v.atomId, status: v.status, battery: v.battery, lat: v.lat, lng: v.lng })),
+      );
+    }
   }
   return {
     areas,
@@ -127,16 +146,28 @@ export async function saveRides(atomRides: AtomRide[], vehicleCity: Map<number, 
       .values(part)
       .onConflictDoUpdate({
         target: rides.atomId,
-        set: { endTime: excluded("end_time"), price: excluded("price"), km: excluded("km"), minutes: excluded("minutes") },
+        set: {
+          endTime: excluded("end_time"),
+          price: excluded("price"),
+          km: excluded("km"),
+          minutes: excluded("minutes"),
+          endLat: excluded("end_lat"),
+          endLng: excluded("end_lng"),
+        },
       });
   }
   return rows.length;
 }
 
-export async function updateLastRides() {
+/** Ultima corsa (e quindi ultimo segnale) di ogni veicolo; con `since` guarda solo le corse recenti. */
+export async function updateLastRides(since?: Date) {
   await db.execute(sql`
-    update vehicles v set last_ride_at = r.last
-    from (select vehicle_atom_id, max(start_time) as last from rides group by vehicle_atom_id) r
+    update vehicles v set last_ride_at = greatest(v.last_ride_at, r.last), last_signal_at = greatest(v.last_signal_at, r.last_end)
+    from (
+      select vehicle_atom_id, max(start_time) as last, max(coalesce(end_time, start_time)) as last_end
+      from rides where vehicle_atom_id is not null ${since ? sql`and start_time >= ${since.toISOString()}::timestamptz` : sql``}
+      group by vehicle_atom_id
+    ) r
     where r.vehicle_atom_id = v.atom_id`);
 }
 
@@ -145,7 +176,7 @@ export async function syncCustomers(client: AtomClient) {
 }
 
 /** Quanti di questi utenti Atom non sono ancora nel database. */
-async function countNewCustomers(atomIds: number[]): Promise<number> {
+export async function countNewCustomers(atomIds: number[]): Promise<number> {
   if (!atomIds.length) return 0;
   const [row] = await db.execute<{ n: number }>(
     sql`select count(*)::int as n from customers where atom_id in (${sql.join(atomIds.map((id) => sql`${id}`), sql`, `)})`,
@@ -153,7 +184,7 @@ async function countNewCustomers(atomIds: number[]): Promise<number> {
   return atomIds.length - (row?.n ?? 0);
 }
 
-async function saveCustomers(atomCustomers: Parameters<typeof mapCustomer>[0][]) {
+export async function saveCustomers(atomCustomers: Parameters<typeof mapCustomer>[0][]) {
   const now = new Date();
   const rows = uniqueBy(atomCustomers.map(mapCustomer), (c) => c.atomId);
   for (const part of chunks(rows)) {

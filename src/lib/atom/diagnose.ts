@@ -50,6 +50,19 @@ export async function diagnoseAtom() {
     };
   }
 
+  // Abbonamenti: piani e storico acquisti (formato non documentato, si mostrano i campi).
+  for (const [key, path] of [["abbonamenti_piani", "/api/v2/admin/subscriptions"], ["abbonamenti_acquisti", "/api/v2/admin/subscriptions/history"]] as const) {
+    const tries: Record<string, unknown> = {};
+    for (const [mode, body] of [["segnalibro", { page_length: 20, page_bookmark: null }], ["pagina", { page: 1, page_length: 20 }]] as const) {
+      const res = await timed(() => client.request<Page<Record<string, unknown>>>("POST", path, body));
+      tries[mode] = res.ok
+        ? { ms: res.ms, chiavi: Object.keys(res.value), righe: res.value.data?.length ?? 0, has_next_page: res.value.has_next_page, campi: shape(res.value.data?.[0]) }
+        : res.error;
+      if (res.ok) break;
+    }
+    report[key] = tries;
+  }
+
   const rides = await timed(() =>
     client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/rides", { ride_status: "ENDED", page_length: 50, page_bookmark: null }),
   );

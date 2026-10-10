@@ -1,5 +1,4 @@
 import { isOnStreet } from "@/lib/atom/parse";
-import { daysInMonth } from "@/lib/dates";
 import { distanceKm } from "@/lib/geo";
 
 export type SnapshotRow = { atomId: number; status: string | null; battery: number | null; lat: number | null; lng: number | null };
@@ -18,8 +17,10 @@ export type MetricInput = {
   vehiclesWithRecentRide: Set<number>;
   /** Veicoli con almeno una corsa negli ultimi 7 giorni: stima della flotta per i giorni senza foto. */
   vehiclesActiveLast7: number;
-  /** Veicoli con almeno una corsa negli ultimi 30 giorni: base della fee Elerent. */
-  vehiclesActiveLast30: number;
+  /** Veicoli paganti: almeno una corsa dal primo del mese fino a questo giorno (base della fee Elerent). */
+  vehiclesPayingMonth: number;
+  /** Veicoli che oggi hanno fatto la prima corsa del mese: la loro fee mensile si conta in questo giorno. */
+  newPayingToday: number;
   snapshot: SnapshotRow[];
   previousSnapshot: SnapshotRow[];
 };
@@ -28,11 +29,12 @@ export const LOW_BATTERY = 20;
 export const STATIONARY_METERS = 50;
 
 /**
- * Elerent guadagna una % sul fatturato + una fee mensile per ogni veicolo attivo,
- * cioè con almeno una corsa negli ultimi 30 giorni. La fee è ripartita sui giorni del mese.
+ * Elerent guadagna una % sul fatturato + una fee mensile per ogni veicolo pagante, cioè con almeno una corsa
+ * nel mese di calendario. La fee di un veicolo si conta nel giorno della sua prima corsa del mese,
+ * così la somma dei giorni di un mese è esattamente quella da fatturare.
  */
-export function elerentRevenue(revenue: number, feeVehicles: number, pct: number, feeMonth: number, day: string) {
-  return (revenue * pct) / 100 + (feeVehicles * feeMonth) / daysInMonth(day);
+export function elerentRevenue(revenue: number, newPayingToday: number, pct: number, feeMonth: number) {
+  return (revenue * pct) / 100 + newPayingToday * feeMonth;
 }
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
@@ -59,14 +61,14 @@ export function buildMetric(input: MetricInput) {
     fleetSize: hasSnapshot ? input.snapshot.length : input.vehiclesActiveLast7,
     activeVehicles,
     vehiclesWithRide: input.vehiclesWithRideToday.size,
-    feeVehicles: input.vehiclesActiveLast30,
+    feeVehicles: input.vehiclesPayingMonth,
     idleVehicles: hasSnapshot ? onStreet.filter((v) => !input.vehiclesWithRecentRide.has(v.atomId)).length : 0,
     lowBattery: onStreet.filter((v) => v.battery !== null && v.battery < LOW_BATTERY).length,
     stationaryVehicles: stationary,
     uniqueCustomers: input.uniqueCustomers,
     newCustomers: input.newCustomers,
     elerentRevenue: round2(
-      elerentRevenue(input.revenue, input.vehiclesActiveLast30, input.revenueSharePct, input.feePerVehicleMonth, input.day),
+      elerentRevenue(input.revenue, input.newPayingToday, input.revenueSharePct, input.feePerVehicleMonth),
     ),
   };
 }
