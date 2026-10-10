@@ -22,7 +22,7 @@ function uniqueBy<T>(rows: T[], key: (row: T) => number): T[] {
   return [...new Map(rows.map((r) => [key(r), r])).values()];
 }
 
-const activeAreas = () => db.select().from(cities).where(eq(cities.active, true));
+export const activeAreas = () => db.select().from(cities).where(eq(cities.active, true));
 
 const AREA_RADIUS_KM = 15;
 

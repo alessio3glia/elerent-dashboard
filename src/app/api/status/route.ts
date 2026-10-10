@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { BACKFILL_LOCK, resumeBackfillIfStalled } from "@/lib/backfill-chain";
 import { db } from "@/lib/db";
 import { getBackfillStatus, isLocked } from "@/lib/sync/sync";
+import { getLiveState } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ export async function GET(request: Request) {
   // Leggere lo stato fa anche ripartire un import fermo, come aprire la dashboard.
   const origin = new URL(request.url).origin;
   after(() => resumeBackfillIfStalled(origin).catch((error) => console.error("Ripresa import non riuscita", error)));
-  const [status, running, [counts]] = await Promise.all([
+  const [live, status, running, [counts]] = await Promise.all([
+    getLiveState(),
     getBackfillStatus(),
     isLocked(BACKFILL_LOCK),
     db.execute<{ rides: number; first_ride: string | null; last_ride: string | null; customers: number; vehicles: number; cities: number; metric_days: number }>(sql`
@@ -41,6 +43,7 @@ export async function GET(request: Request) {
           updatedAt: status.updatedAt,
         }
       : null,
+    live,
     database: counts,
   });
 }

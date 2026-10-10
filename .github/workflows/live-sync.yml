@@ -1,0 +1,21 @@
+# Porta le corse nuove da Atom nella dashboard ogni 5 minuti.
+# Richiede il secret CRON_SECRET nel repository (stesso valore della variabile su Vercel).
+name: Sync in tempo reale
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Chiama la dashboard
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS --fail-with-body --max-time 150 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://elerent-dashboard.vercel.app/api/cron/live
