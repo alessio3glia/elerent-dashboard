@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Card, Delta, PageHeader, PriorityBadge, StatTile } from "@/components/ui";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { TrendChart } from "@/components/trend-chart";
+import { getLiveState, todayByCity } from "@/lib/live";
 import { addDays, formatDay, localDay } from "@/lib/dates";
 import { METRICS, formatMetric } from "@/lib/metrics/catalog";
 import { inRange, sumByDay } from "@/lib/metrics/aggregate";
@@ -11,13 +13,25 @@ const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b
 
 export default async function OverviewPage() {
   const last = await lastMetricDay();
-  const [cities, rows, alerts, todayTasks, sync] = await Promise.all([
+  const [cities, rows, alerts, todayTasks, sync, today, live] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
     tasksForDay(localDay()),
     lastSync(),
+    todayByCity(),
+    getLiveState(),
   ]);
+  const todayTotal = today.reduce(
+    (a, r) => ({ rides: a.rides + r.rides, revenue: a.revenue + r.revenue, vehicles: a.vehicles + r.vehicles }),
+    { rides: 0, revenue: 0, vehicles: 0 },
+  );
+  const lastRide = today.map((r) => r.last_ride).filter((d): d is Date => !!d).sort((a, b) => +b - +a)[0];
+  const todayRows = cities
+    .map((c) => ({ city: c, ...(today.find((r) => r.city_id === c.id) ?? { rides: 0, revenue: 0, vehicles: 0 }) }))
+    .filter((r) => r.rides > 0)
+    .sort((a, b) => b.rides - a.rides);
+  const time = (d: Date | string) => new Date(d).toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
   const network = sumByDay(rows);
   const cur30 = inRange(network, addDays(last, -29), last);
   const prev30 = inRange(network, addDays(last, -59), addDays(last, -30));
@@ -80,6 +94,37 @@ export default async function OverviewPage() {
           </>
         }
       />
+
+      <AutoRefresh seconds={60} />
+      <Card
+        title={
+          <>
+            <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+            Oggi, in tempo reale
+          </>
+        }
+        action={
+          <span className="text-xs text-ink-3">
+            {live ? `aggiornato alle ${time(live.at)}` : "in attesa della prima sincronizzazione"}
+            {lastRide && ` · ultima corsa ${time(lastRide)}`}
+            {live?.error && <span className="text-critical"> · errore Atom: {live.error}</span>}
+          </span>
+        }
+        className="mb-6"
+      >
+        <div className="flex flex-wrap gap-x-10 gap-y-3">
+          <div><div className="text-xs text-ink-3">Corse</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.rides, "num")}</div></div>
+          <div><div className="text-xs text-ink-3">Fatturato</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.revenue, "eur")}</div></div>
+          <div><div className="text-xs text-ink-3">Veicoli usati</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.vehicles, "num")}</div></div>
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+            {todayRows.slice(0, 12).map((r) => (
+              <Link key={r.city.id} href={`/citta/${r.city.slug}`} className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs hover:text-brand">
+                {r.city.name} <span className="tabular text-ink-2">{r.rides} corse · {formatMetric(r.revenue, "eur")}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {tiles.map(({ m, value, delta }) => (
