@@ -84,10 +84,10 @@ export async function recompute() {
 }
 
 /** Avvia l'import dello storico in background sul server: prosegue da solo anche a pagina chiusa. */
-export async function startHistoryImport(restart: boolean) {
+export async function startHistoryImport(restart: boolean): Promise<{ error: string | null }> {
   await requireAdmin();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
-  await triggerBackfillStep(`${proto}://${host}`, restart);
+  return { error: await triggerBackfillStep(`${proto}://${host}`, restart) };
 }

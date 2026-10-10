@@ -11,6 +11,7 @@ export function BackfillRunner({ rides, done, running, started }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [justStarted, setJustStarted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const active = (running || justStarted) && !done;
 
   useEffect(() => {
@@ -21,9 +22,15 @@ export function BackfillRunner({ rides, done, running, started }: Props) {
 
   const start = (restart: boolean) =>
     startTransition(async () => {
-      await startHistoryImport(restart);
-      setJustStarted(true);
-      router.refresh();
+      setError(null);
+      try {
+        const result = await startHistoryImport(restart);
+        if (result.error) return setError(`Avvio non riuscito: ${result.error}. Riprova tra poco.`);
+        setJustStarted(true);
+        router.refresh();
+      } catch {
+        setError("Avvio non riuscito. Ricarica la pagina e riprova.");
+      }
     });
 
   const count = rides.toLocaleString("it-IT", { useGrouping: "always" });
@@ -34,6 +41,7 @@ export function BackfillRunner({ rides, done, running, started }: Props) {
         {!active && !started && "Non ancora avviato. Le città vengono create da sole in base a dove sono i veicoli."}
         {!active && started && !done && `Fermo a ${count} corse: premi “Continua” per riprendere.`}
         {done && `Completato: ${count} corse importate.`}
+        {error && <div className="mt-1 text-red-400">{error}</div>}
       </div>
       {!active &&
         (done ? (
