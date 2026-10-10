@@ -16,7 +16,7 @@ import { CityForm, UserForm } from "./forms";
 export default async function SettingsPage() {
   const me = await requireAdmin();
   const [cities, users, sync, backfill] = await Promise.all([
-    listCities(),
+    listCities({ all: true }),
     db.select().from(schema.appUsers).orderBy(asc(schema.appUsers.name)),
     lastSync(),
     getBackfillState(),

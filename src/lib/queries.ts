@@ -5,8 +5,13 @@ import { TZ, addDays, localDay } from "@/lib/dates";
 
 const { cities, dailyMetrics, alerts, tasks, syncRuns, vehicles } = schema;
 
-export async function listCities() {
-  return db.select().from(cities).orderBy(asc(cities.name));
+/** Città da mostrare: di default solo quelle operative (attive). Impostazioni le chiede tutte. */
+export async function listCities(opts: { all?: boolean } = {}) {
+  return db
+    .select()
+    .from(cities)
+    .where(opts.all ? undefined : eq(cities.active, true))
+    .orderBy(asc(cities.name));
 }
 
 export async function getCity(slug: string) {

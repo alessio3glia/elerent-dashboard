@@ -3,7 +3,7 @@ import { AtomClient, DATE_RANGE_SHAPES, atomAccountFromEnv, type AtomRide } from
 import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 import { cityForPoint, distanceKm, type CityArea } from "@/lib/geo";
-import { ITALIAN_CITIES } from "@/lib/italian-cities";
+import { placeName } from "./cities";
 import { mapCustomer, mapRide, mapVehicle } from "./map";
 import { parseDate } from "@/lib/atom/parse";
 
@@ -26,7 +26,7 @@ const activeAreas = () => db.select().from(cities).where(eq(cities.active, true)
 
 const AREA_RADIUS_KM = 15;
 
-function slugify(s: string) {
+export function slugify(s: string) {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
@@ -49,9 +49,8 @@ export async function createMissingCities(points: { lat: number; lng: number }[]
     } else clusters.push({ ...p, n: 1 });
   }
   for (const c of clusters.filter((c) => c.n >= 3)) {
-    const nearest = ITALIAN_CITIES.map(([name, lat, lng]) => ({ name, d: distanceKm(c, { lat, lng }) })).sort((a, b) => a.d - b.d)[0];
-    let name = nearest && nearest.d < 25 ? nearest.name : `Area ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}`;
-    if (all.some((x) => x.name === name)) name = `${name} ${all.length + created.length + 1}`;
+    let name = (await placeName(c.lat, c.lng)) ?? `Area ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}`;
+    for (let i = 2; all.some((x) => x.name.toLowerCase() === name.toLowerCase()); i++) name = `${name.replace(/ \d+$/, "")} ${i}`;
     const [row] = await db
       .insert(cities)
       .values({ name, slug: slugify(name), centerLat: c.lat, centerLng: c.lng, radiusKm: AREA_RADIUS_KM })
