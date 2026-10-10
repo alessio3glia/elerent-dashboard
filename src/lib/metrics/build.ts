@@ -18,6 +18,8 @@ export type MetricInput = {
   vehiclesWithRecentRide: Set<number>;
   /** Veicoli con almeno una corsa negli ultimi 7 giorni: stima della flotta per i giorni senza foto. */
   vehiclesActiveLast7: number;
+  /** Veicoli con almeno una corsa negli ultimi 30 giorni: base della fee Elerent. */
+  vehiclesActiveLast30: number;
   snapshot: SnapshotRow[];
   previousSnapshot: SnapshotRow[];
 };
@@ -25,9 +27,12 @@ export type MetricInput = {
 export const LOW_BATTERY = 20;
 export const STATIONARY_METERS = 50;
 
-/** Elerent guadagna una % sul fatturato + una fee mensile per veicolo attivo (ripartita per giorno). */
-export function elerentRevenue(revenue: number, activeVehicles: number, pct: number, feeMonth: number, day: string) {
-  return (revenue * pct) / 100 + (activeVehicles * feeMonth) / daysInMonth(day);
+/**
+ * Elerent guadagna una % sul fatturato + una fee mensile per ogni veicolo attivo,
+ * cioè con almeno una corsa negli ultimi 30 giorni. La fee è ripartita sui giorni del mese.
+ */
+export function elerentRevenue(revenue: number, feeVehicles: number, pct: number, feeMonth: number, day: string) {
+  return (revenue * pct) / 100 + (feeVehicles * feeMonth) / daysInMonth(day);
 }
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
@@ -54,13 +59,14 @@ export function buildMetric(input: MetricInput) {
     fleetSize: hasSnapshot ? input.snapshot.length : input.vehiclesActiveLast7,
     activeVehicles,
     vehiclesWithRide: input.vehiclesWithRideToday.size,
+    feeVehicles: input.vehiclesActiveLast30,
     idleVehicles: hasSnapshot ? onStreet.filter((v) => !input.vehiclesWithRecentRide.has(v.atomId)).length : 0,
     lowBattery: onStreet.filter((v) => v.battery !== null && v.battery < LOW_BATTERY).length,
     stationaryVehicles: stationary,
     uniqueCustomers: input.uniqueCustomers,
     newCustomers: input.newCustomers,
     elerentRevenue: round2(
-      elerentRevenue(input.revenue, activeVehicles, input.revenueSharePct, input.feePerVehicleMonth, input.day),
+      elerentRevenue(input.revenue, input.vehiclesActiveLast30, input.revenueSharePct, input.feePerVehicleMonth, input.day),
     ),
   };
 }

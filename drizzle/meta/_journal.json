@@ -8,6 +8,13 @@
       "when": 1791570165189,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791627914146,
+      "tag": "0001_fee_veicoli_attivi",
+      "breakpoints": true
     }
   ]
 }

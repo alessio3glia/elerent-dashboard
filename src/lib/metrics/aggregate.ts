@@ -2,7 +2,7 @@ import type { DailyMetric } from "@/lib/db/schema";
 
 const FIELDS = [
   "rides", "revenue", "fleetSize", "activeVehicles", "vehiclesWithRide", "idleVehicles",
-  "lowBattery", "stationaryVehicles", "uniqueCustomers", "newCustomers", "elerentRevenue",
+  "lowBattery", "stationaryVehicles", "uniqueCustomers", "newCustomers", "elerentRevenue", "feeVehicles",
 ] as const;
 
 export type Totals = Record<(typeof FIELDS)[number], number> & { day: string; estimated: boolean };

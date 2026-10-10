@@ -27,9 +27,9 @@ export const cities = pgTable("cities", {
   centerLng: doublePrecision("center_lng"),
   radiusKm: doublePrecision("radius_km").notNull().default(15),
   /** Percentuale Elerent sul fatturato, es. 10 = 10%. */
-  revenueSharePct: doublePrecision("revenue_share_pct").notNull().default(0),
-  /** Fee Elerent per veicolo attivo al mese, in euro. */
-  feePerVehicleMonth: doublePrecision("fee_per_vehicle_month").notNull().default(0),
+  revenueSharePct: doublePrecision("revenue_share_pct").notNull().default(10),
+  /** Fee Elerent al mese per veicolo attivo (almeno una corsa negli ultimi 30 giorni), in euro. */
+  feePerVehicleMonth: doublePrecision("fee_per_vehicle_month").notNull().default(15),
   active: boolean("active").notNull().default(true),
   lastContactAt: timestamp("last_contact_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -127,6 +127,8 @@ export const dailyMetrics = pgTable(
     /** Veicoli in strada (stato operativo) nella foto del giorno. */
     activeVehicles: integer("active_vehicles").notNull().default(0),
     vehiclesWithRide: integer("vehicles_with_ride").notNull().default(0),
+    /** Veicoli con almeno una corsa negli ultimi 30 giorni: sono quelli su cui si paga la fee. */
+    feeVehicles: integer("fee_vehicles").notNull().default(0),
     idleVehicles: integer("idle_vehicles").notNull().default(0),
     lowBattery: integer("low_battery").notNull().default(0),
     /** Veicoli in strada rimasti nello stesso punto rispetto alla foto precedente. */

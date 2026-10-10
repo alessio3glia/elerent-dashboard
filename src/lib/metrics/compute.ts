@@ -41,7 +41,7 @@ export async function computeMetrics(from: string, to: string = from) {
     const pairs = await db.execute<{ day: string; v: number }>(sql`
       select distinct (start_time at time zone ${TZ})::date::text as day, vehicle_atom_id as v
       from rides where city_id = ${city.id} and vehicle_atom_id is not null
-        and (start_time at time zone ${TZ})::date between ${addDays(from, -6)}::date and ${to}::date`);
+        and (start_time at time zone ${TZ})::date between ${addDays(from, -29)}::date and ${to}::date`);
     const vehiclesByDay = new Map<string, Set<number>>();
     for (const p of pairs) {
       if (!vehiclesByDay.has(p.day)) vehiclesByDay.set(p.day, new Set());
@@ -80,6 +80,7 @@ export async function computeMetrics(from: string, to: string = from) {
         vehiclesWithRideToday: vehiclesByDay.get(day) ?? new Set(),
         vehiclesWithRecentRide: windowSet(day, 3),
         vehiclesActiveLast7: windowSet(day, 7).size,
+        vehiclesActiveLast30: windowSet(day, 30).size,
         snapshot: snaps.get(day) ?? [],
         previousSnapshot: snaps.get(addDays(day, -1)) ?? [],
       });

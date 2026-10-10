@@ -3,7 +3,7 @@ import type { DailyMetric } from "@/lib/db/schema";
 type Row = Pick<
   DailyMetric,
   | "rides" | "revenue" | "activeVehicles" | "fleetSize" | "vehiclesWithRide" | "idleVehicles"
-  | "lowBattery" | "stationaryVehicles" | "uniqueCustomers" | "newCustomers" | "elerentRevenue"
+  | "lowBattery" | "stationaryVehicles" | "uniqueCustomers" | "newCustomers" | "elerentRevenue" | "feeVehicles"
 >;
 
 export type MetricFormat = "eur" | "eur2" | "num" | "num1" | "pct";
@@ -32,8 +32,13 @@ export const METRICS: MetricDef[] = [
   },
   {
     key: "elerentRevenue", label: "Ricavo Elerent", format: "eur", higherIsBetter: true,
-    description: "Percentuale sul fatturato più la fee mensile per veicolo attivo, ripartita per giorno.",
+    description: "10% del fatturato più 15 € al mese per ogni veicolo con almeno una corsa negli ultimi 30 giorni (fee ripartita per giorno). Percentuale e fee si cambiano per città da Impostazioni.",
     daily: (r) => r.elerentRevenue, total: (rows) => s(rows, (r) => r.elerentRevenue),
+  },
+  {
+    key: "feeVehicles", label: "Veicoli attivi (fee)", format: "num", higherIsBetter: true,
+    description: "Veicoli con almeno una corsa negli ultimi 30 giorni: sono quelli su cui Elerent incassa la fee mensile.",
+    daily: (r) => r.feeVehicles, total: (rows) => (rows.length ? rows[rows.length - 1].feeVehicles : null),
   },
   {
     key: "rides", label: "Corse", format: "num", higherIsBetter: true,
