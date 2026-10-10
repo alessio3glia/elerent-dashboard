@@ -17,6 +17,11 @@ function chunks<T>(items: T[], size = 500): T[][] {
 
 const excluded = (col: string) => sql.raw(`excluded.${col}`);
 
+/** Tiene una sola riga per id Atom (l'ultima): Postgres rifiuta un upsert con due righe sullo stesso id. */
+function uniqueBy<T>(rows: T[], key: (row: T) => number): T[] {
+  return [...new Map(rows.map((r) => [key(r), r])).values()];
+}
+
 const activeAreas = () => db.select().from(cities).where(eq(cities.active, true));
 
 const AREA_RADIUS_KM = 15;
@@ -111,9 +116,12 @@ export async function syncVehicles(client: AtomClient, initialAreas: CityArea[])
 }
 
 export async function saveRides(atomRides: AtomRide[], vehicleCity: Map<number, number | null>, areas: CityArea[], since?: Date) {
-  const rows = atomRides
-    .map((r) => mapRide(r, vehicleCity, areas))
-    .filter((r): r is NonNullable<typeof r> => r !== null && (!since || r.startTime >= since));
+  const rows = uniqueBy(
+    atomRides
+      .map((r) => mapRide(r, vehicleCity, areas))
+      .filter((r): r is NonNullable<typeof r> => r !== null && (!since || r.startTime >= since)),
+    (r) => r.atomId,
+  );
   for (const part of chunks(rows)) {
     await db
       .insert(rides)
@@ -148,7 +156,7 @@ async function countNewCustomers(atomIds: number[]): Promise<number> {
 
 async function saveCustomers(atomCustomers: Parameters<typeof mapCustomer>[0][]) {
   const now = new Date();
-  const rows = atomCustomers.map(mapCustomer);
+  const rows = uniqueBy(atomCustomers.map(mapCustomer), (c) => c.atomId);
   for (const part of chunks(rows)) {
     await db
       .insert(customers)

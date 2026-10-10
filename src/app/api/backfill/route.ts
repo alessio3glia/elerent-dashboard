@@ -28,7 +28,9 @@ export async function POST(request: Request) {
         next = !result.state.done;
         console.log(`Import storico: blocco terminato, finito=${result.state.done}`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        // Per gli errori del database il messaggio utile è nella causa, non nel testo della query.
+        const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : null;
+        const message = cause ?? (error instanceof Error ? error.message : String(error));
         console.error("Import storico: blocco fallito", error);
         const errors = await recordBackfillError(message).catch(() => MAX_CONSECUTIVE_ERRORS);
         next = errors < MAX_CONSECUTIVE_ERRORS;
