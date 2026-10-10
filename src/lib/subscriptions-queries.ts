@@ -31,3 +31,19 @@ export async function subscriptionsTotal() {
   const [row] = await db.execute<{ n: number; first: Date | null }>(sql`select count(*)::int as n, min(purchased_at) as first from subscriptions`);
   return row;
 }
+
+/** Mese in corso fino ad ora, contro gli stessi giorni del mese prima, per città. */
+export async function subscriptionsMonthToDate() {
+  return db.execute<{ city_id: number | null; n: number; revenue: number; prev_n: number; prev_revenue: number }>(sql`
+    with b as (
+      select date_trunc('month', now() at time zone ${TZ}) as m, now() at time zone ${TZ} as t
+    )
+    select city_id,
+      count(*) filter (where purchased_at >= b.m at time zone ${TZ})::int as n,
+      coalesce(sum(price) filter (where purchased_at >= b.m at time zone ${TZ}), 0)::float as revenue,
+      count(*) filter (where purchased_at < b.m at time zone ${TZ} and purchased_at < (b.t - interval '1 month') at time zone ${TZ})::int as prev_n,
+      coalesce(sum(price) filter (where purchased_at < b.m at time zone ${TZ} and purchased_at < (b.t - interval '1 month') at time zone ${TZ}), 0)::float as prev_revenue
+    from subscriptions, b
+    where purchased_at >= (b.m - interval '1 month') at time zone ${TZ}
+    group by city_id`);
+}

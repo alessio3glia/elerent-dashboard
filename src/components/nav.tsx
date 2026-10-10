@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/task", label: "Task di oggi" },
   { href: "/attivita", label: "Attività svolte" },
   { href: "/alert", label: "Alert" },
+  { href: "/ricavi", label: "Ricavi" },
   { href: "/analytics", label: "Analytics" },
   { href: "/citta", label: "Città" },
   { href: "/utenti", label: "Utenti" },

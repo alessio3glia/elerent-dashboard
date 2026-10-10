@@ -4,6 +4,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { TrendChart } from "@/components/trend-chart";
 import { LiveMapLoader } from "@/components/live-map-loader";
 import { liveVehicles, recentRideEnds } from "@/lib/fleet-status";
+import { subscriptionsMonthToDate } from "@/lib/subscriptions-queries";
 import { getLiveState, todayByCity, todaySubscriptionsByCity } from "@/lib/live";
 import { addDays, formatDay, localDay } from "@/lib/dates";
 import { METRICS, formatMetric } from "@/lib/metrics/catalog";
@@ -15,7 +16,7 @@ const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b
 
 export default async function OverviewPage() {
   const last = await lastMetricDay();
-  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs] = await Promise.all([
+  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
@@ -26,7 +27,16 @@ export default async function OverviewPage() {
     liveVehicles(),
     recentRideEnds(30),
     todaySubscriptionsByCity(),
+    subscriptionsMonthToDate(),
   ]);
+  const subsMonth = monthSubs.reduce(
+    (a, r) => ({ n: a.n + r.n, revenue: a.revenue + r.revenue, prevN: a.prevN + r.prev_n, prevRevenue: a.prevRevenue + r.prev_revenue }),
+    { n: 0, revenue: 0, prevN: 0, prevRevenue: 0 },
+  );
+  const subsCities = monthSubs
+    .filter((r) => r.n > 0)
+    .map((r) => ({ ...r, city: cities.find((c) => c.id === r.city_id) }))
+    .sort((a, b) => b.revenue - a.revenue);
   const subsToday = todaySubs.reduce((a, r) => ({ n: a.n + r.n, revenue: a.revenue + r.revenue }), { n: 0, revenue: 0 });
   const mapRides = rideEnds.map((r) => ({ id: r.id, lat: r.lat, lng: r.lng, price: r.price, minutesAgo: r.minutes_ago }));
   const counts = { corsa: 0, operativo: 0, spento: 0 };
@@ -45,7 +55,17 @@ export default async function OverviewPage() {
   const cur30 = inRange(network, addDays(last, -29), last);
   const prev30 = inRange(network, addDays(last, -59), addDays(last, -30));
 
-  const tiles = ["elerentRevenue", "revenue", "rides", "ridesPerVehicle"].map((key) => {
+  // Ricavo Elerent del mese (quota sul fatturato + fee dei mezzi alla prima corsa del mese) contro gli stessi giorni del mese prima.
+  const monthStart = `${last.slice(0, 7)}-01`;
+  const prevMonthStart = `${addDays(monthStart, -1).slice(0, 7)}-01`;
+  const prevSameDay = addDays(prevMonthStart, Number(last.slice(8, 10)) - 1);
+  const sumElerent = (from: string, to: string) => inRange(network, from, to).reduce((a, d) => a + (d.elerentRevenue ?? 0), 0);
+  const elerentMonth = sumElerent(monthStart, last);
+  const elerentPrev = sumElerent(prevMonthStart, prevSameDay < monthStart ? prevSameDay : addDays(monthStart, -1));
+  const pctById = new Map(cities.map((c) => [c.id, c.revenueSharePct]));
+  const shareByDay = new Map<string, number>();
+  for (const r of rows) shareByDay.set(r.day, (shareByDay.get(r.day) ?? 0) + ((r.revenue ?? 0) * (pctById.get(r.cityId) ?? 10)) / 100);
+  const tiles = ["revenue", "rides", "ridesPerVehicle"].map((key) => {
     const m = metric(key);
     const a = m.total(cur30);
     return { m, value: formatMetric(a, m.format), delta: change(a, m.total(prev30)) };
@@ -66,7 +86,7 @@ export default async function OverviewPage() {
         rides: metric("rides").total(w) ?? 0,
         revenue: rev,
         delta: change(rev, metric("revenue").total(pw)),
-        elerent: metric("elerentRevenue").total(w) ?? 0,
+        elerent: (rev * c.revenueSharePct) / 100,
         rpv: metric("ridesPerVehicle").total(w),
         alerts: alerts.filter((a) => a.city.id === c.id).length,
       };
@@ -141,6 +161,38 @@ export default async function OverviewPage() {
       </Card>
 
       <Card
+        title={`Abbonamenti di ${new Date().toLocaleDateString("it-IT", { month: "long", timeZone: "Europe/Rome" })}`}
+        action={<Link href="/abbonamenti" className="text-xs text-brand hover:underline">Dettaglio</Link>}
+        className="mb-6"
+      >
+        <div className="flex flex-wrap gap-x-10 gap-y-3">
+          <div>
+            <div className="text-xs text-ink-3">Venduti nel mese</div>
+            <div className="tabular text-3xl font-semibold">{formatMetric(subsMonth.n, "num")}</div>
+            <Delta value={change(subsMonth.n, subsMonth.prevN)} />
+          </div>
+          <div>
+            <div className="text-xs text-ink-3">Incasso nel mese</div>
+            <div className="tabular text-3xl font-semibold">{formatMetric(subsMonth.revenue, "eur")}</div>
+            <Delta value={change(subsMonth.revenue, subsMonth.prevRevenue)} />
+          </div>
+          <div>
+            <div className="text-xs text-ink-3">Oggi</div>
+            <div className="tabular text-3xl font-semibold">{formatMetric(subsToday.revenue, "eur")}</div>
+            <div className="tabular text-xs text-ink-3">{formatMetric(subsToday.n, "num")} venduti</div>
+          </div>
+          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+            {subsCities.slice(0, 10).map((r) => (
+              <span key={r.city_id ?? "none"} className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs">
+                {r.city?.name ?? "Altre"} <span className="tabular text-ink-2">{r.n} · {formatMetric(r.revenue, "eur")}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-ink-3">Variazioni rispetto agli stessi giorni del mese scorso.</p>
+      </Card>
+
+      <Card
         title="Mappa live della flotta"
         action={
           <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
@@ -156,6 +208,12 @@ export default async function OverviewPage() {
       </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatTile
+          label={`Ricavo Elerent · ${new Date(`${last}T12:00:00Z`).toLocaleDateString("it-IT", { month: "long" })}`}
+          value={formatMetric(elerentMonth, "eur")}
+          delta={change(elerentMonth, elerentPrev)}
+          hint="quota + fee mezzi, vs stessi giorni mese prima"
+        />
         {tiles.map(({ m, value, delta }) => (
           <StatTile key={m.key} label={`${m.label} · 30 gg`} value={value} delta={delta} higherIsBetter={m.higherIsBetter} />
         ))}
@@ -168,8 +226,12 @@ export default async function OverviewPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
-        <Card title="Ricavo Elerent giornaliero · 60 giorni" className="xl:col-span-2">
-          <TrendChart label="Ricavo Elerent" format="eur" data={network.map((d) => ({ day: d.day, value: d.elerentRevenue }))} />
+        <Card
+          title="Quota Elerent sul fatturato · giorno per giorno, 60 giorni"
+          action={<Link href="/ricavi" className="text-xs text-brand hover:underline">Ricavi mese per mese</Link>}
+          className="xl:col-span-2"
+        >
+          <TrendChart label="Quota sul fatturato" format="eur" data={network.map((d) => ({ day: d.day, value: Math.round((shareByDay.get(d.day) ?? 0) * 100) / 100 }))} />
         </Card>
         <Card
           title={`Task di oggi · ${openTasks.length} aperte`}
@@ -199,7 +261,7 @@ export default async function OverviewPage() {
               <th className="text-right">Corse/veicolo</th>
               <th className="text-right">Fatturato</th>
               <th className="text-right">vs sett. prima</th>
-              <th className="text-right">Ricavo Elerent</th>
+              <th className="text-right">Quota Elerent</th>
               <th className="text-right">Alert oggi</th>
             </tr>
           </thead>
