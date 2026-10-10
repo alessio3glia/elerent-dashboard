@@ -251,6 +251,15 @@ export async function getBackfillStatus() {
   return row ? { state: row.value as BackfillState, updatedAt: row.updatedAt } : null;
 }
 
+/** L'import sta lavorando: un blocco ha il lock o ha salvato avanzamento negli ultimi 3 minuti (tra un blocco e l'altro). */
+export async function isBackfillActive(lock: string): Promise<boolean> {
+  const rows = await db.execute<{ key: string }>(sql`
+    select key from sync_state
+    where (key = ${lock} and (value->>'until')::timestamptz > now())
+       or (key = 'backfill' and (value->>'done')::boolean = false and updated_at > now() - interval '3 minutes')`);
+  return rows.length > 0;
+}
+
 /** Registra un blocco fallito; restituisce quanti blocchi di fila sono falliti. */
 export async function recordBackfillError(message: string): Promise<number> {
   const state = await getBackfillState();

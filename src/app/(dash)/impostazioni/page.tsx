@@ -6,7 +6,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import { lastSync, listCities } from "@/lib/queries";
-import { getBackfillState, isLocked } from "@/lib/sync/sync";
+import { getBackfillState, isBackfillActive } from "@/lib/sync/sync";
 import { BACKFILL_LOCK } from "@/lib/backfill-chain";
 
 // L'import dello storico lavora a blocchi di circa 4 minuti
@@ -21,7 +21,7 @@ export default async function SettingsPage() {
     lastSync(),
     getBackfillState(),
   ]);
-  const importRunning = await isLocked(BACKFILL_LOCK);
+  const importRunning = await isBackfillActive(BACKFILL_LOCK);
   const counts = sync?.counts as { vehicles?: number; vehiclesWithoutCity?: number; rides?: number; customers?: number } | null;
   return (
     <>

@@ -14,11 +14,13 @@ export function BackfillRunner({ rides, customers, lastError, step, done, runnin
   const [error, setError] = useState<string | null>(null);
   const active = (running || justStarted) && !done;
 
+  // Si aggiorna finché l'import non è finito, anche nei secondi di pausa tra un blocco e l'altro.
+  const polling = active || (started && !done);
   useEffect(() => {
-    if (!active) return;
+    if (!polling) return;
     const id = setInterval(() => router.refresh(), 10_000);
     return () => clearInterval(id);
-  }, [active, router]);
+  }, [polling, router]);
 
   const start = (restart: boolean) =>
     startTransition(async () => {
