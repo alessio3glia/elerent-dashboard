@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/citta", label: "Città" },
   { href: "/utenti", label: "Utenti" },
   { href: "/abbonamenti", label: "Abbonamenti" },
+  { href: "/notifiche", label: "Notifiche" },
 ];
 
 /** Puntino che pulsa sul link cliccato finché la pagina non arriva. */
