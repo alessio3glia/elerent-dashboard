@@ -1,8 +1,9 @@
 "use client";
 
+import { BaseTiles } from "./base-tiles";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef } from "react";
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Tooltip, useMap } from "react-leaflet";
 import type { LiveVehicle } from "@/lib/fleet-status";
 
 export type RideEnd = { id: number; lat: number; lng: number; minutesAgo: number; price: number | null };
@@ -31,10 +32,7 @@ export default function LiveMap({ vehicles, rides }: { vehicles: LiveVehicle[]; 
   const focus = vehicles.filter((v) => v.state !== "spento").map((v) => [v.lat, v.lng] as [number, number]);
   return (
     <MapContainer center={[41.9, 12.5]} zoom={6} scrollWheelZoom className="h-[480px] w-full rounded-lg" style={{ background: "#0a0a0a" }}>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      />
+      <BaseTiles />
       <FitOnce points={focus.length ? focus : vehicles.map((v) => [v.lat, v.lng])} />
       {rides.map((r) => (
         <CircleMarker

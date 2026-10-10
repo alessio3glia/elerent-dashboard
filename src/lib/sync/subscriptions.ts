@@ -13,26 +13,35 @@ const STATE_KEY = "subscriptions";
 const PII = /name|email|phone|document|image|photo|card|token|password|address/i;
 
 type Row = Record<string, unknown>;
-type Page = { data?: Row[]; has_next_page?: boolean; bookmark_next?: string | null };
 
 /**
- * Il formato della richiesta non è documentato: si prova la paginazione a segnalibro (come le corse)
- * e quella a numero di pagina. La prima che Atom accetta si ricorda nello stato.
+ * Il formato della richiesta non è documentato: si prova la paginazione a segnalibro (come le corse),
+ * con e senza intervallo di date, e quella a numero di pagina. Vince la prima che restituisce acquisti.
  */
+const HISTORY_FROM = "2024-01-01";
+const today = () => new Date().toISOString().slice(0, 10);
 const MODES = {
   bookmark: (cursor: string | null) => ({ page_length: 100, page_bookmark: cursor }),
+  bookmark_date: (cursor: string | null) => ({ page_length: 100, page_bookmark: cursor, date_range: { from: HISTORY_FROM, to: today() } }),
   page: (cursor: string | null) => ({ page: Number(cursor ?? 1), page_length: 100 }),
+  page_date: (cursor: string | null) => ({ page: Number(cursor ?? 1), page_length: 100, date_range: { from: HISTORY_FROM, to: today() } }),
 } as const;
 type Mode = keyof typeof MODES;
 
+/** Cosa ha risposto Atom all'ultima prova, mostrato nella pagina Abbonamenti se non arriva niente. */
+type Probe = { endpoint: string; mode: string; result: string };
+
+type SourceState = { mode?: Mode; cursor?: string | null; done?: boolean };
+
 export type SubscriptionsState = {
-  mode?: Mode;
-  cursor?: string | null;
-  /** Primo giro completo dello storico finito. */
+  /** Stato per endpoint: acquisti attivi e storico acquisti. */
+  sources?: Record<string, SourceState>;
+  /** Primo giro completo di tutte le fonti finito. */
   done?: boolean;
   pages?: number;
   saved?: number;
   lastError?: string | null;
+  probes?: Probe[];
   at?: string;
 };
 
@@ -82,36 +91,57 @@ async function writeState(value: SubscriptionsState) {
 
 export const getSubscriptionsState = readState;
 
-async function plansById(client: AtomClient) {
-  try {
-    const res = await client.request<Page>("POST", PLANS, { page: 1, page_length: 100 });
-    return new Map((res.data ?? []).map((p) => [String(p.id), p]));
-  } catch {
-    return new Map<string, Row>();
-  }
-}
-
-async function fetchPage(client: AtomClient, mode: Mode, cursor: string | null) {
-  const res = await client.request<Page>("POST", HISTORY, MODES[mode](cursor));
-  const data = res.data ?? [];
-  const next = mode === "page" ? (res.has_next_page && data.length ? String(Number(cursor ?? 1) + 1) : null) : res.has_next_page && data.length ? (res.bookmark_next ?? null) : null;
-  return { data, next };
-}
-
-async function detectMode(client: AtomClient): Promise<Mode> {
-  for (const mode of Object.keys(MODES) as Mode[]) {
-    try {
-      await fetchPage(client, mode, null);
-      return mode;
-    } catch {
-      // formato rifiutato: si prova il successivo
+/** Le righe della risposta, qualunque sia la chiave usata da Atom (data, items, results...). */
+function rowsOf(res: unknown): Row[] {
+  if (Array.isArray(res)) return res.filter((x) => x && typeof x === "object") as Row[];
+  if (!res || typeof res !== "object") return [];
+  const o = res as Row;
+  for (const key of ["data", "items", "results", "subscriptions", "history", "list", "records", "rows"]) {
+    const v = o[key];
+    if (Array.isArray(v)) return v as Row[];
+    if (v && typeof v === "object") {
+      const inner = rowsOf(v);
+      if (inner.length) return inner;
     }
   }
-  throw new Error("Atom non accetta nessun formato di richiesta per lo storico abbonamenti (vedi Diagnostica)");
+  return [];
+}
+
+/** Un acquisto ha sempre un utente; le righe senza utente sono i piani (tipi di abbonamento). */
+const hasUser = (r: Row) => first(r, ["user_id", "customer_id", "user.id", "customer.id"]) !== undefined;
+
+async function fetchPage(client: AtomClient, path: string, mode: Mode, cursor: string | null) {
+  const res = await client.request<Row>("POST", path, MODES[mode](cursor));
+  const data = rowsOf(res);
+  const more = (res.has_next_page ?? res.has_next ?? res.next_page) && data.length > 0;
+  const bookmark = (res.bookmark_next ?? res.next_bookmark ?? res.page_bookmark) as string | null | undefined;
+  const next = mode.startsWith("page") ? (more ? String(Number(cursor ?? 1) + 1) : null) : more ? (bookmark ?? null) : null;
+  return { data, next, keys: Object.keys(res ?? {}) };
+}
+
+/** Prova i formati di richiesta e tiene il primo che porta acquisti; annota cosa ha risposto Atom. */
+async function detectMode(client: AtomClient, path: string, probes: Probe[]): Promise<Mode | null> {
+  let accepted: Mode | null = null;
+  for (const mode of Object.keys(MODES) as Mode[]) {
+    try {
+      const page = await fetchPage(client, path, mode, null);
+      const purchases = page.data.filter(hasUser).length;
+      probes.push({
+        endpoint: path,
+        mode,
+        result: `ok · chiavi ${page.keys.join(", ") || "-"} · ${page.data.length} righe (${purchases} con utente) · campi ${Object.keys(page.data[0] ?? {}).join(", ") || "-"}`,
+      });
+      if (purchases > 0) return mode;
+      accepted ??= mode;
+    } catch (error) {
+      probes.push({ endpoint: path, mode, result: (error instanceof Error ? error.message : String(error)).slice(0, 200) });
+    }
+  }
+  return accepted;
 }
 
 async function save(rows: Row[], plans: Map<string, Row>) {
-  const mapped = [...new Map(rows.map((r) => mapSubscription(r, plans)).filter((r) => r !== null).map((r) => [r.atomId, r])).values()];
+  const mapped = [...new Map(rows.filter(hasUser).map((r) => mapSubscription(r, plans)).filter((r) => r !== null).map((r) => [r.atomId, r])).values()];
   if (!mapped.length) return { saved: 0, fresh: 0 };
   const existing = await db.execute<{ n: number }>(
     sql`select count(*)::int as n from subscriptions where atom_id in (${sql.join(mapped.map((r) => sql`${r.atomId}`), sql`, `)})`,
@@ -157,45 +187,73 @@ export async function assignSubscriptionCities() {
     where s.city_id is null and s.customer_atom_id is not null`);
 }
 
+const SOURCES = [HISTORY, PLANS];
+
 /**
- * Scarica lo storico abbonamenti. Il primo giro legge tutto, a blocchi fino a `deadline` (riprende da dove era);
- * poi ogni volta rilegge solo le prime pagine, dove arrivano gli acquisti nuovi.
+ * Scarica gli abbonamenti acquistati da entrambi gli elenchi Atom (attivi e storico). Il primo giro legge tutto,
+ * a blocchi fino a `deadline` (riprende da dove era); poi ogni volta rilegge solo le prime pagine, dove arrivano i nuovi.
  */
 export async function syncSubscriptions(client: AtomClient, deadline = Date.now() + 30_000) {
   const state = await readState();
-  const next: SubscriptionsState = { ...state, at: new Date().toISOString(), lastError: null };
+  const next: SubscriptionsState = { ...state, sources: { ...state.sources }, at: new Date().toISOString(), lastError: null };
+  const probes: Probe[] = [];
+  let fresh = 0;
   try {
-    next.mode ??= await detectMode(client);
-    const plans = await plansById(client);
-    let cursor = state.done ? null : (state.cursor ?? null);
-    let fresh = 0;
-    for (let i = 0; Date.now() < deadline; i++) {
-      const page = await fetchPage(client, next.mode, cursor);
-      const result = await save(page.data, plans);
-      fresh += result.fresh;
-      next.saved = (next.saved ?? 0) + result.fresh;
-      next.pages = (next.pages ?? 0) + 1;
-      // Segnalibro ignorato da Atom (torna sempre la stessa pagina): lo storico finisce qui.
-      cursor = page.next && page.next !== cursor ? page.next : null;
-      // Dopo il primo giro bastano le pagine con acquisti nuovi.
-      if (!cursor || (state.done && (result.fresh === 0 || i >= 4))) break;
+    // I piani (righe senza utente) danno nome e prezzo agli acquisti che hanno solo l'id del piano.
+    const plans = new Map<string, Row>();
+    try {
+      for (const p of rowsOf(await client.request<Row>("POST", PLANS, { page: 1, page_length: 100 }))) if (!hasUser(p)) plans.set(String(p.id), p);
+    } catch {
+      // nessun elenco piani: si usano i campi dell'acquisto
     }
-    if (!state.done) {
-      next.cursor = cursor;
-      next.done = cursor === null;
+    for (const path of SOURCES) {
+      const src: SourceState = { ...next.sources![path] };
+      // Finché non è arrivato nessun acquisto si riprova a capire il formato a ogni giro.
+      if (!src.mode || !(next.saved ?? 0)) {
+        src.mode = (await detectMode(client, path, probes)) ?? undefined;
+        if (!src.mode) {
+          next.sources![path] = src;
+          continue;
+        }
+      }
+      let cursor = src.done ? null : (src.cursor ?? null);
+      let gotAny = false;
+      for (let i = 0; Date.now() < deadline; i++) {
+        const page = await fetchPage(client, path, src.mode, cursor);
+        const result = await save(page.data, plans);
+        gotAny ||= result.saved > 0;
+        fresh += result.fresh;
+        next.saved = (next.saved ?? 0) + result.fresh;
+        next.pages = (next.pages ?? 0) + 1;
+        // Segnalibro ignorato da Atom (torna sempre la stessa pagina): l'elenco finisce qui.
+        cursor = page.next && page.next !== cursor ? page.next : null;
+        // Dopo il primo giro bastano le pagine con acquisti nuovi.
+        if (!cursor || (src.done && (result.fresh === 0 || i >= 4))) break;
+      }
+      if (!src.done) {
+        src.cursor = cursor;
+        // Un elenco senza nessun acquisto non si considera finito: si riprova al giro dopo.
+        src.done = cursor === null && (gotAny || (next.saved ?? 0) > 0);
+      }
+      next.sources![path] = src;
     }
+    next.done = SOURCES.every((p) => next.sources![p]?.done);
+    if (probes.length) next.probes = probes;
+    if (!(next.saved ?? 0) && !next.probes?.length) next.lastError = "Atom non ha restituito nessun acquisto";
     await assignSubscriptionCities();
     await writeState(next);
     return { fresh, done: next.done };
   } catch (error) {
     next.lastError = error instanceof Error ? error.message.slice(0, 300) : String(error);
+    if (probes.length) next.probes = probes;
     await writeState(next);
     throw error;
   }
 }
 
-/** Riparte dall'inizio dello storico (es. una volta al giorno, se Atom non ordina dal più recente). */
+/** Riparte dall'inizio dello storico (una volta al giorno, se Atom non ordina dal più recente). */
 export async function rescanSubscriptions() {
   const state = await readState();
-  if (state.done) await writeState({ ...state, done: false, cursor: null });
+  const sources = Object.fromEntries(Object.entries(state.sources ?? {}).map(([k, v]) => [k, { ...v, done: false, cursor: null }]));
+  await writeState({ ...state, done: false, sources });
 }

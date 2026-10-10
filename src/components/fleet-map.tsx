@@ -1,7 +1,8 @@
 "use client";
 
+import { BaseTiles } from "./base-tiles";
 import "leaflet/dist/leaflet.css";
-import { CircleMarker, MapContainer, TileLayer, Tooltip } from "react-leaflet";
+import { CircleMarker, MapContainer, Tooltip } from "react-leaflet";
 
 export type MapVehicle = {
   id: number;
@@ -31,10 +32,7 @@ export const STATE_LABEL: Record<MapVehicle["state"], string> = {
 export default function FleetMap({ vehicles, center }: { vehicles: MapVehicle[]; center: [number, number] }) {
   return (
     <MapContainer center={center} zoom={13} scrollWheelZoom className="h-[420px] w-full rounded-lg" style={{ background: "#141414" }}>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      />
+      <BaseTiles />
       {vehicles.map((v) => (
         <CircleMarker
           key={v.id}

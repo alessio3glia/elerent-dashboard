@@ -54,7 +54,18 @@ export default async function SubscriptionsPage() {
       />
 
       {!total?.n ? (
-        <Empty>Ancora nessun abbonamento importato. La sincronizzazione li scarica da Atom insieme alle corse.</Empty>
+        <div className="grid gap-6">
+          <Empty>Ancora nessun abbonamento importato. La sincronizzazione riprova da sola ogni pochi minuti.</Empty>
+          {state.probes?.length ? (
+            <Card title="Cosa risponde Atom (per l'assistenza)" className="overflow-x-auto">
+              <ul className="space-y-2 text-xs text-ink-2">
+                {state.probes.map((p, i) => (
+                  <li key={i} className="break-all"><span className="text-ink">{p.endpoint} · {p.mode}</span>: {p.result}</li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+        </div>
       ) : (
         <div className="grid gap-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
