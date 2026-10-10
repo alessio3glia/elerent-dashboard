@@ -36,6 +36,13 @@
       "when": 1791658091877,
       "tag": "0004_registro_attivita",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791662794885,
+      "tag": "0005_recupero_crediti",
+      "breakpoints": true
     }
   ]
 }

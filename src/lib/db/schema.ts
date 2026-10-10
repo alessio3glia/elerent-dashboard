@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -118,7 +119,51 @@ export const customers = pgTable(
     blocked: boolean("blocked"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("customers_registered").on(t.registeredAt)],
+  (t) => [index("customers_registered").on(t.registeredAt), index("customers_debt").on(t.debt).where(sql`debt > 0`)],
+);
+
+/**
+ * Pratiche di recupero: si aprono da sole quando un utente ha un debito (corse non pagate) e si chiudono
+ * come recuperate quando Atom riporta il debito a zero.
+ */
+export const debtCases = pgTable(
+  "debt_cases",
+  {
+    id: serial("id").primaryKey(),
+    customerAtomId: integer("customer_atom_id").notNull(),
+    status: text("status").notNull().default("aperta"), // aperta | recuperata | esclusa
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    initialDebt: doublePrecision("initial_debt").notNull(),
+    maxDebt: doublePrecision("max_debt").notNull(),
+    currentDebt: doublePrecision("current_debt").notNull(),
+    /** Ultima email della sequenza inviata: 0 nessuna, 1 cortese, 2 sollecito, 3 avviso pratica legale. */
+    stage: integer("stage").notNull().default(0),
+    lastEmailAt: timestamp("last_email_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    recoveredAmount: doublePrecision("recovered_amount"),
+    note: text("note"),
+  },
+  (t) => [index("debt_cases_customer").on(t.customerAtomId, t.status), index("debt_cases_status").on(t.status)],
+);
+
+/** Ogni email di sollecito inviata (o fallita), per storico e controlli. */
+export const recoveryEmails = pgTable(
+  "recovery_emails",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull().references(() => debtCases.id),
+    customerAtomId: integer("customer_atom_id").notNull(),
+    stage: integer("stage").notNull(),
+    email: text("email").notNull(),
+    subject: text("subject").notNull(),
+    debt: doublePrecision("debt").notNull(),
+    status: text("status").notNull(), // inviata | errore | prova
+    providerId: text("provider_id"),
+    error: text("error"),
+    sentBy: text("sent_by").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("recovery_emails_case").on(t.caseId), index("recovery_emails_sent").on(t.sentAt)],
 );
 
 /** Abbonamenti acquistati dagli utenti (storico acquisti Atom), assegnati alla città dove sono stati comprati. */

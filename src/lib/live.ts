@@ -5,6 +5,7 @@ import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 import type { CityArea } from "@/lib/geo";
 import { computeMetrics } from "@/lib/metrics/compute";
+import { scanUsers, syncDebtCases } from "@/lib/recovery";
 import { nameCities, updateCityActivity } from "@/lib/sync/cities";
 import { getSubscriptionsState, syncSubscriptions } from "@/lib/sync/subscriptions";
 import { acquireLock, activeAreas, countNewCustomers, getBackfillState, releaseLock, saveCustomers, saveRides, slugify, syncVehicles, updateLastRides } from "@/lib/sync/sync";
@@ -32,6 +33,7 @@ type LiveState = {
   vehicles?: number;
   customers?: number;
   subscriptions?: number;
+  recovered?: number;
   error?: string | null;
 };
 
@@ -99,6 +101,12 @@ export async function liveSync(force = false) {
         bookmark = page.next;
       }
       next.customers = saved;
+    });
+
+    // Debiti: rilettura a rotazione di tutti gli utenti e aggiornamento delle pratiche di recupero.
+    await step("debiti", async () => {
+      await scanUsers(client, Date.now() + 20_000);
+      next.recovered = (await syncDebtCases()).recovered;
     });
 
     // Abbonamenti acquistati: tutto lo storico al primo giro (a blocchi), poi solo i nuovi.

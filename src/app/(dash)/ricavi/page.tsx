@@ -180,7 +180,8 @@ export default async function RevenuePage({ searchParams }: PageProps<"/ricavi">
         <Card title="Corse non pagate">
           <div className="tabular text-3xl font-semibold text-critical">{formatMetric(debt.debt, "eur")}</div>
           <p className="mt-2 text-sm text-ink-2">Debito aperto di {formatMetric(debt.users, "num")} utenti secondo Atom: corse finite senza credito sufficiente.</p>
-          <p className="mt-2 text-xs text-ink-3">Tutta la rete, aggiornato ogni notte con l&apos;elenco utenti.</p>
+          <p className="mt-2 text-xs text-ink-3">Tutta la rete, ricontrollato a rotazione su tutti gli utenti.</p>
+          <Link href="/recupero" className="btn-secondary mt-4">Vai al recupero crediti</Link>
         </Card>
       </div>
     </>

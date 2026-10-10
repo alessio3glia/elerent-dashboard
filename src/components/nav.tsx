@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/attivita", label: "Attività svolte" },
   { href: "/alert", label: "Alert" },
   { href: "/ricavi", label: "Ricavi" },
+  { href: "/recupero", label: "Recupero crediti" },
   { href: "/analytics", label: "Analytics" },
   { href: "/citta", label: "Città" },
   { href: "/utenti", label: "Utenti" },

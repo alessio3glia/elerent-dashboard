@@ -4,6 +4,7 @@ import { addDays, localDay } from "@/lib/dates";
 import { computeMetrics, firstRideDay } from "@/lib/metrics/compute";
 import { generateDailyTasks } from "@/lib/rules/run";
 import { nameCities, updateCityActivity } from "@/lib/sync/cities";
+import { getRecoverySettings, sendDue } from "@/lib/recovery";
 import { rescanSubscriptions } from "@/lib/sync/subscriptions";
 import { backfillStep, slugify, syncFromAtom } from "@/lib/sync/sync";
 
@@ -32,7 +33,10 @@ export async function runDaily() {
   const metrics = full ? await computeMetrics(addDays(today, -3), addDays(today, -1)) : await recomputeAll();
   if (!full) await db.insert(syncState).values({ key: FULL_RECOMPUTE_KEY, value: { at: new Date().toISOString() }, updatedAt: new Date() }).onConflictDoNothing();
   const tasks = await generateDailyTasks(today);
-  return { sync, metrics, tasks };
+  // Sequenza di solleciti: parte da sola solo se una persona ha acceso l'invio automatico in Recupero.
+  const settings = await getRecoverySettings();
+  const recovery = settings.auto ? await sendDue("Invio automatico") : null;
+  return { sync, metrics, tasks, recovery };
 }
 
 /**
