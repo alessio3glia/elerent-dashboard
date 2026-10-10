@@ -202,6 +202,7 @@ type BackfillState = {
   customersBookmark?: string | null;
   /** Elenco dei formati di date provati quando nessuno ha funzionato. */
   rangeTried?: string;
+  refreshFleet?: boolean;
   /** Campo con cui Atom accetta il segnalibro della pagina utenti (null = nessuno funziona). */
   usersField?: string | null;
   /** Pagine di utenti di fila senza nessun utente nuovo. */
@@ -265,6 +266,14 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
   } else {
     vehicleCity = new Map((await db.select({ a: vehicles.atomId, c: vehicles.cityId }).from(vehicles)).map((v) => [v.a, v.c]));
   }
+  // Prima dello storico si ricaricano veicoli e città: Atom restituisce solo la città selezionata
+  // nella sua dashboard, quindi un import partito con una sola città la vedrebbe incompleta.
+  if (state.refreshFleet) {
+    const fleet = await syncVehicles(client, areas);
+    vehicleCity = fleet.vehicleCity;
+    areas = fleet.areas;
+    state.refreshFleet = false;
+  }
   state.phase ??= "rides";
   state.customers ??= 0;
 
@@ -282,6 +291,7 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
     } else if (state.phase === "customers" && (state.rangeShape === undefined || (state.rangeShape === null && state.rangeTried !== shapeList()))) {
       // Ritenta lo storico se è stato saltato con una versione che provava meno formati di date.
       delete state.rangeShape;
+      state.refreshFleet = true;
       // Import avviato con la versione precedente: prima lo storico corse, poi si riprendono i clienti da dov'erano.
       state.customersBookmark = state.bookmark;
       state.bookmark = null;
@@ -291,6 +301,7 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
         await updateLastRides();
         state.phase = "customers";
         state.bookmark = state.customersBookmark ?? null;
+        state.refreshFleet = true;
       }
     } else {
       if (state.usersField === undefined) {
