@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { addDays, localDay } from "@/lib/dates";
+import { TZ, addDays, localDay } from "@/lib/dates";
 
 const { cities, dailyMetrics, alerts, tasks, syncRuns, vehicles } = schema;
 
@@ -68,4 +68,24 @@ export async function lastSync() {
 
 export async function cityVehicles(cityId: number) {
   return db.select().from(vehicles).where(eq(vehicles.cityId, cityId));
+}
+
+export type MonthRow = { cityId: number; month: string; vehicles: number; rides: number; revenue: number; customers: number };
+
+/**
+ * Totali mensili per città ricostruiti direttamente dalle corse.
+ * "vehicles" = veicoli diversi con almeno una corsa nel mese in quella città.
+ * Con `untilDay` conta solo i giorni del mese fino a quel numero (per confrontare un mese in corso con lo stesso periodo dell'anno prima).
+ */
+export async function monthlyFromRides(opts: { months?: string[]; untilDay?: number } = {}): Promise<MonthRow[]> {
+  const month = sql`to_char(start_time at time zone ${TZ}, 'YYYY-MM')`;
+  const conditions = [sql`city_id is not null`];
+  if (opts.months?.length) conditions.push(sql`${month} in (${sql.join(opts.months.map((m) => sql`${m}`), sql`, `)})`);
+  if (opts.untilDay) conditions.push(sql`extract(day from start_time at time zone ${TZ}) <= ${opts.untilDay}`);
+  return db.execute<MonthRow>(sql`
+    select city_id as "cityId", ${month} as month,
+           count(distinct vehicle_atom_id)::int as vehicles, count(*)::int as rides,
+           coalesce(sum(price), 0)::float as revenue, count(distinct customer_atom_id)::int as customers
+    from rides where ${sql.join(conditions, sql` and `)}
+    group by 1, 2`);
 }

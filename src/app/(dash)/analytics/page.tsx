@@ -69,7 +69,9 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
 
   return (
     <>
-      <PageHeader title="Analytics" subtitle={`${formatDay(from)} – ${formatDay(last)}${selected ? ` · ${selected.name}` : " · tutta la rete"}`} />
+      <PageHeader title="Analytics" subtitle={`${formatDay(from)} – ${formatDay(last)}${selected ? ` · ${selected.name}` : " · tutta la rete"}`}>
+        <Link href="/analytics/mensile" className="btn-secondary">Confronto anno su anno</Link>
+      </PageHeader>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {METRICS.map((m) => (
