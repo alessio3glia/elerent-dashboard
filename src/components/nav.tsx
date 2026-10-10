@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/analytics", label: "Analytics" },
   { href: "/citta", label: "Città" },
   { href: "/utenti", label: "Utenti" },
+  { href: "/notifiche", label: "Notifiche" },
 ];
 
 export function Nav({ isAdmin, openTasks }: { isAdmin: boolean; openTasks: number }) {

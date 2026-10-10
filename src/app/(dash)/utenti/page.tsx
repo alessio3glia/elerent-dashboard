@@ -50,7 +50,10 @@ export default async function CustomersPage({ searchParams }: PageProps<"/utenti
 
       <Card className="mt-6" title={`${SEGMENTS[segment].label}: ${SEGMENTS[segment].description}`}>
         <p className="mb-4 rounded-lg bg-brand-soft px-4 py-3 text-sm">
-          <span className="font-medium text-brand">Notifica suggerita:</span> {SEGMENTS[segment].push}
+          <span className="font-medium text-brand">Notifica suggerita:</span> {SEGMENTS[segment].push}{" "}
+          <Link href={`/notifiche?${new URLSearchParams({ segmento: segment, ...(city ? { citta: city.slug } : {}) })}`} className="font-medium text-brand underline">
+            Prepara la notifica
+          </Link>
         </p>
         <div className="overflow-x-auto">
           <table className="table tabular">

@@ -114,3 +114,17 @@ export async function customersInSegment(segment: Segment, cityId?: number, limi
     order by s.spend_total desc
     limit ${limit}`);
 }
+
+/** Tutti i destinatari di un segmento (senza limite), per le notifiche push. */
+export async function segmentRecipients(segment: Segment, cityId?: number) {
+  if (segment === "mai_attivi") {
+    if (cityId) return [];
+    return db.execute<{ id: number; email: string | null; phone: string | null }>(sql`
+      select cu.atom_id as id, cu.email, cu.phone from customers cu where ${NEVER_RODE}`);
+  }
+  return db.execute<{ id: number; email: string | null; phone: string | null }>(sql`
+    select s.id, cu.email, cu.phone
+    from (${SEGMENT_SQL}) s
+    left join customers cu on cu.atom_id = s.id
+    where s.segment = ${segment} and ${cityId ? sql`s.city_id = ${cityId}` : sql`true`}`);
+}

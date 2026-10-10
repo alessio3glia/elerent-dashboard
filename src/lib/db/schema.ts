@@ -209,3 +209,23 @@ export const syncState = pgTable("sync_state", {
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Notifiche push inviate dalla dashboard tramite OneSignal (prove e invii reali). */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    segment: text("segment").notNull(),
+    cityId: integer("city_id").references(() => cities.id),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    test: boolean("test").notNull().default(false),
+    status: text("status").notNull(), // in_invio | inviata | errore
+    recipients: integer("recipients").notNull().default(0),
+    onesignalIds: jsonb("onesignal_ids"),
+    error: text("error"),
+    sentBy: text("sent_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("notifications_created").on(t.createdAt)],
+);
