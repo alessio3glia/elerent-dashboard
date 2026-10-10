@@ -33,6 +33,11 @@ export const SEGMENTS = {
     description: "Nessuna corsa da oltre 90 giorni.",
     push: "Comunicazione occasionale su novità (nuove zone, nuovi veicoli).",
   },
+  mai_attivi: {
+    label: "Mai una corsa",
+    description: "Registrati su Atom ma senza nessuna corsa importata.",
+    push: "Prima corsa gratis o sblocco gratuito per convertire l'iscrizione in utilizzo.",
+  },
 } as const;
 
 export type Segment = keyof typeof SEGMENTS;
@@ -62,18 +67,44 @@ const SEGMENT_SQL = sql`
     end as segment
   from c`;
 
+const NEVER_RODE = sql`not exists (select 1 from rides r where r.customer_atom_id = cu.atom_id)`;
+
 export async function segmentSummary(cityId?: number) {
-  return db.execute<{ segment: Segment; customers: number; spend_30: number; spend_total: number }>(sql`
+  const rows = await db.execute<{ segment: Segment; customers: number; spend_30: number; spend_total: number }>(sql`
     select segment, count(*)::int as customers, sum(spend_30)::float as spend_30, sum(spend_total)::float as spend_total
     from (${SEGMENT_SQL}) s
     where ${cityId ? sql`city_id = ${cityId}` : sql`true`}
     group by segment`);
+  // Chi non ha corse non ha una città: si conta solo nella vista di tutta la rete.
+  if (!cityId) {
+    const [never] = await db.execute<{ n: number }>(sql`select count(*)::int as n from customers cu where ${NEVER_RODE}`);
+    rows.push({ segment: "mai_attivi", customers: never?.n ?? 0, spend_30: 0, spend_total: 0 });
+  }
+  return rows;
+}
+
+/** Utenti registrati importati da Atom (con o senza corse). */
+export async function registeredCustomers(): Promise<number> {
+  const [row] = await db.execute<{ n: number }>(sql`select count(*)::int as n from customers`);
+  return row?.n ?? 0;
 }
 
 export async function customersInSegment(segment: Segment, cityId?: number, limit = 50) {
+  if (segment === "mai_attivi") {
+    if (cityId) return [];
+    return db.execute<{
+      id: number; name: string | null; email: string | null; phone: string | null;
+      rides_total: number; spend_total: number; rides_30: number; rides_prev_30: number; last_ride: Date | null; city_name: string | null;
+    }>(sql`
+      select cu.atom_id as id, cu.name, cu.email, cu.phone, 0 as rides_total, 0::float as spend_total, 0 as rides_30, 0 as rides_prev_30,
+             null as last_ride, null as city_name
+      from customers cu where ${NEVER_RODE}
+      order by cu.registered_at desc nulls last
+      limit ${limit}`);
+  }
   return db.execute<{
     id: number; name: string | null; email: string | null; phone: string | null;
-    rides_total: number; spend_total: number; rides_30: number; rides_prev_30: number; last_ride: Date; city_name: string | null;
+    rides_total: number; spend_total: number; rides_30: number; rides_prev_30: number; last_ride: Date | null; city_name: string | null;
   }>(sql`
     select s.id, cu.name, cu.email, cu.phone, s.rides_total, s.spend_total, s.rides_30, s.rides_prev_30, s.last_ride, ci.name as city_name
     from (${SEGMENT_SQL}) s

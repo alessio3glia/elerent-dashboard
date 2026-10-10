@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Card, Empty, PageHeader } from "@/components/ui";
-import { SEGMENTS, customersInSegment, segmentSummary, type Segment } from "@/lib/customers";
+import { SEGMENTS, customersInSegment, registeredCustomers, segmentSummary, type Segment } from "@/lib/customers";
 import { formatMetric } from "@/lib/metrics/catalog";
 import { listCities } from "@/lib/queries";
 
@@ -9,7 +9,8 @@ export default async function CustomersPage({ searchParams }: PageProps<"/utenti
   const segment = (Object.keys(SEGMENTS).includes(String(sp.segmento)) ? sp.segmento : "in_calo") as Segment;
   const cities = await listCities();
   const city = cities.find((c) => c.slug === sp.citta);
-  const [summary, list] = await Promise.all([segmentSummary(city?.id), customersInSegment(segment, city?.id)]);
+  const [summary, list, registered] = await Promise.all([segmentSummary(city?.id), customersInSegment(segment, city?.id), registeredCustomers()]);
+  const withRides = summary.filter((s) => s.segment !== "mai_attivi").reduce((a, s) => a + s.customers, 0);
   const bySegment = new Map(summary.map((s) => [s.segment, s]));
   const href = (patch: Record<string, string>) =>
     `/utenti?${new URLSearchParams({ segmento: segment, ...(city ? { citta: city.slug } : {}), ...patch })}`;
@@ -19,7 +20,12 @@ export default async function CustomersPage({ searchParams }: PageProps<"/utenti
       <PageHeader
         title="Utenti"
         subtitle="Clienti divisi per comportamento, con l'azione suggerita per aumentare la spesa. La città è quella dell'ultima corsa."
-      />
+      >
+        <div className="text-right text-sm text-ink-2">
+          <div className="tabular text-2xl font-semibold text-ink">{formatMetric(registered, "num")}</div>
+          registrati importati · {formatMetric(withRides, "num")} con almeno una corsa{city ? ` a ${city.name}` : ""}
+        </div>
+      </PageHeader>
       <div className="mb-6 flex flex-wrap gap-2">
         <Link href={`/utenti?segmento=${segment}`} className={`rounded-lg px-3 py-1.5 text-sm ${!city ? "bg-surface-2" : "text-ink-3 hover:text-ink"}`}>Tutte le città</Link>
         {cities.map((c) => (
@@ -27,7 +33,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/utenti
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-7">
         {(Object.keys(SEGMENTS) as Segment[]).map((key) => {
           const s = bySegment.get(key);
           return (
@@ -71,7 +77,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/utenti
                   <td className="text-right">{c.rides_total}</td>
                   <td className="text-right">{c.rides_30}</td>
                   <td className="text-right">{c.rides_prev_30}</td>
-                  <td className="text-right">{new Date(c.last_ride).toLocaleDateString("it-IT")}</td>
+                  <td className="text-right">{c.last_ride ? new Date(c.last_ride).toLocaleDateString("it-IT") : "—"}</td>
                 </tr>
               ))}
             </tbody>

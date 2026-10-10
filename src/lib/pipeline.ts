@@ -29,7 +29,18 @@ export async function runDaily() {
  */
 export async function runBackfill(budgetMs = 240_000, restart = false) {
   const state = await backfillStep(budgetMs, restart);
-  if (!state.done) return { state };
+  if (!state.done) {
+    // La dashboard si riempie mentre l'import va avanti: KPI subito per i giorni appena scaricati.
+    const yesterday = addDays(localDay(), -1);
+    if (state.touchedFrom && state.touchedFrom <= yesterday) {
+      await assignMissingCities();
+      // +30 giorni: i KPI a finestra mobile (veicoli attivi a 30 gg) dipendono anche dalle corse più vecchie.
+      const end = addDays(state.touchedTo ?? yesterday, 30);
+      const to = end < yesterday ? end : yesterday;
+      await computeMetrics(state.touchedFrom, to);
+    }
+    return { state };
+  }
   const metrics = await recomputeAll();
   const tasks = await generateDailyTasks(localDay());
   return { state, metrics, tasks };

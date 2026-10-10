@@ -5,6 +5,7 @@ import { addDays, localDay } from "@/lib/dates";
 import { cityForPoint, distanceKm, type CityArea } from "@/lib/geo";
 import { ITALIAN_CITIES } from "@/lib/italian-cities";
 import { mapCustomer, mapRide, mapVehicle } from "./map";
+import { parseDate } from "@/lib/atom/parse";
 
 const { cities, vehicles, vehicleSnapshots, rides, customers, syncRuns, syncState } = schema;
 
@@ -66,6 +67,12 @@ export async function syncVehicles(client: AtomClient, initialAreas: CityArea[])
     (await db.select({ atomId: vehicles.atomId, cityId: vehicles.cityId }).from(vehicles)).map((v) => [v.atomId, v.cityId]),
   );
   const atomVehicles = await client.vehicles();
+  // Atom restituisce solo la città selezionata nella sua dashboard: se la flotta crolla, l'account non è su "Global".
+  if (previous.size >= 50 && atomVehicles.length < previous.size * 0.5) {
+    throw new Error(
+      `Atom restituisce ${atomVehicles.length} veicoli invece di circa ${previous.size}: l'account Atom usato dalla dashboard non è su "Global". Rimettilo su Global.`,
+    );
+  }
   const points = atomVehicles
     .map((v) => (v.coordinates ? { lat: v.coordinates.latitude, lng: v.coordinates.longitude } : null))
     .filter((p): p is { lat: number; lng: number } => p !== null && Number.isFinite(p.lat) && (p.lat !== 0 || p.lng !== 0));
@@ -203,6 +210,9 @@ type BackfillState = {
   /** Elenco dei formati di date provati quando nessuno ha funzionato. */
   rangeTried?: string;
   refreshFleet?: boolean;
+  /** Giorni toccati dall'ultimo blocco, per aggiornare subito i KPI di quel periodo. */
+  touchedFrom?: string | null;
+  touchedTo?: string | null;
   /** Campo con cui Atom accetta il segnalibro della pagina utenti (null = nessuno funziona). */
   usersField?: string | null;
   /** Pagine di utenti di fila senza nessun utente nuovo. */
@@ -275,6 +285,17 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
     state.refreshFleet = false;
   }
   state.phase ??= "rides";
+  state.touchedFrom = null;
+  state.touchedTo = null;
+  const touch = (rides: AtomRide[]) => {
+    for (const r of rides) {
+      const start = parseDate(r.history_start_date ?? r.start_time);
+      if (!start) continue;
+      const day = localDay(start);
+      if (!state.touchedFrom || day < state.touchedFrom) state.touchedFrom = day;
+      if (!state.touchedTo || day > state.touchedTo) state.touchedTo = day;
+    }
+  };
   state.customers ??= 0;
 
   // Almeno una pagina per blocco, così ogni blocco fa sempre un passo avanti.
@@ -282,6 +303,7 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
     if (state.phase === "rides") {
       const page = await client.ridesPage(state.bookmark);
       state.rides += await saveRides(page.rides, vehicleCity, areas);
+      touch(page.rides);
       state.pages++;
       state.bookmark = page.next;
       if (!page.next) {
@@ -297,7 +319,7 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
       state.bookmark = null;
       state.phase = "history";
     } else if (state.phase === "history") {
-      if (await historyStep(client, state, vehicleCity, areas)) {
+      if (await historyStep(client, state, vehicleCity, areas, touch)) {
         await updateLastRides();
         state.phase = "customers";
         state.bookmark = state.customersBookmark ?? null;
@@ -350,7 +372,13 @@ const shapeList = () => `v2:${Object.keys(DATE_RANGE_SHAPES).join(",")}`;
  * Una pagina dello storico corse. Va indietro a finestre di 14 giorni da oggi fino a
  * ATOM_HISTORY_START (default 2024-01-01). Restituisce true quando lo storico è finito.
  */
-async function historyStep(client: AtomClient, state: BackfillState, vehicleCity: Map<number, number | null>, areas: CityArea[]) {
+async function historyStep(
+  client: AtomClient,
+  state: BackfillState,
+  vehicleCity: Map<number, number | null>,
+  areas: CityArea[],
+  touch: (rides: AtomRide[]) => void,
+) {
   const historyStart = process.env.ATOM_HISTORY_START || "2024-01-01";
   if (state.rangeShape === undefined) {
     const probeEnd = addDays(localDay(), -70);
@@ -368,6 +396,7 @@ async function historyStep(client: AtomClient, state: BackfillState, vehicleCity
   const from = addDays(state.windowEnd, -(HISTORY_WINDOW_DAYS - 1));
   const page = await client.ridesPage(state.bookmark, build(from, state.windowEnd));
   state.rides += await saveRides(page.rides, vehicleCity, areas);
+  touch(page.rides);
   state.pages++;
   if (page.rides.length) state.oldestRide = from;
   state.bookmark = page.next;
