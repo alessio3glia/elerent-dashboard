@@ -3,6 +3,20 @@
 
 import { parseDate } from "./parse";
 
+/** Forme possibili dell'oggetto date_range di Atom (lo schema non è documentato): si prova quale funziona. */
+export const DATE_RANGE_SHAPES: Record<string, (from: string, to: string) => unknown> = {
+  "from/to giorno": (from, to) => ({ from, to }),
+  "from/to data e ora": (from, to) => ({ from: `${from}T00:00:00`, to: `${to}T23:59:59` }),
+  "from/to gg/mm/aaaa": (from, to) => ({ from: itDate(from), to: itDate(to) }),
+  "start_date/end_date": (from, to) => ({ start_date: from, end_date: to }),
+  "start/end": (from, to) => ({ start: from, end: to }),
+  "date_from/date_to": (from, to) => ({ date_from: from, date_to: to }),
+  "from/to unix": (from, to) => ({ from: unix(from), to: unix(to) + 86_399 }),
+};
+
+const itDate = (day: string) => day.split("-").reverse().join("/");
+const unix = (day: string) => Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000);
+
 export type AtomAccount = { email: string; password: string; baseUrl?: string };
 
 export type AtomRide = {
@@ -56,7 +70,7 @@ export function atomAccountFromEnv(): AtomAccount {
 }
 
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
-const BACKOFF_MS = [2_000, 5_000, 15_000, 30_000];
+const BACKOFF_MS = [2_000, 5_000, 10_000];
 
 /**
  * fetch con timeout e nuovi tentativi sugli errori temporanei (rete, 429, 5xx),
@@ -65,7 +79,7 @@ const BACKOFF_MS = [2_000, 5_000, 15_000, 30_000];
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(45_000) });
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
       if (!TRANSIENT.has(res.status) || attempt >= BACKOFF_MS.length) return res;
       const retryAfter = Number(res.headers.get("retry-after"));
       await sleep(retryAfter > 0 ? Math.min(retryAfter * 1000, 60_000) : BACKOFF_MS[attempt]);
@@ -144,11 +158,11 @@ export class AtomClient {
   }
 
   /** Una pagina di corse concluse; `bookmark` null = la prima. */
-  async ridesPage(bookmark: string | null) {
+  async ridesPage(bookmark: string | null, dateRange?: unknown) {
     const res = await this.request<{ data: AtomRide[]; has_next_page: boolean; bookmark_next: string }>(
       "POST",
       "/api/v2/admin/rides",
-      { ride_status: "ENDED", page_length: 100, page_bookmark: bookmark },
+      { ride_status: "ENDED", page_length: 100, page_bookmark: bookmark, ...(dateRange ? { date_range: dateRange } : {}) },
     );
     return { rides: res.data, next: res.has_next_page && res.data.length > 0 ? res.bookmark_next : null };
   }
@@ -169,6 +183,26 @@ export class AtomClient {
       bookmark = page.next;
     }
     return out;
+  }
+
+  /**
+   * Trova la forma di date_range che Atom accetta davvero: chiede le corse di una settimana di
+   * qualche mese fa e controlla che le corse restituite cadano in quella settimana
+   * (se il filtro viene ignorato arrivano le corse recenti). Null se nessuna forma funziona.
+   */
+  async detectDateRangeShape(from: string, to: string): Promise<string | null> {
+    const lo = Date.parse(`${from}T00:00:00Z`) - 2 * 86_400_000;
+    const hi = Date.parse(`${to}T23:59:59Z`) + 2 * 86_400_000;
+    for (const [name, build] of Object.entries(DATE_RANGE_SHAPES)) {
+      try {
+        const page = await this.ridesPage(null, build(from, to));
+        const times = page.rides.map((r) => parseDate(r.history_start_date ?? r.start_time)?.getTime()).filter((t): t is number => !!t);
+        if (times.length > 0 && times.filter((t) => t >= lo && t <= hi).length >= times.length * 0.9) return name;
+      } catch {
+        // forma rifiutata da Atom: si prova la successiva
+      }
+    }
+    return null;
   }
 
   /** Una pagina di clienti; `bookmark` null = la prima. */

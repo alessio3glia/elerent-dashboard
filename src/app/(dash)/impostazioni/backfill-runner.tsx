@@ -4,10 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { startHistoryImport } from "@/app/actions/settings";
 
-type Props = { rides: number; customers: number; lastError: string | null; done: boolean; running: boolean; started: boolean };
+type Props = { rides: number; customers: number; lastError: string | null; step: string | null; done: boolean; running: boolean; started: boolean };
 
 /** Avvia l'import storico, che prosegue sul server; la pagina si aggiorna da sola per mostrare l'avanzamento. */
-export function BackfillRunner({ rides, customers, lastError, done, running, started }: Props) {
+export function BackfillRunner({ rides, customers, lastError, step, done, running, started }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [justStarted, setJustStarted] = useState(false);
@@ -43,6 +43,7 @@ export function BackfillRunner({ rides, customers, lastError, done, running, sta
         {!active && started && !done && `Fermo a ${count}: riparte da solo entro qualche minuto, oppure premi “Continua import”.`}
         {done && `Completato: ${count} importati.`}
         {error && <div className="mt-1 text-red-400">{error}</div>}
+        {step && !done && <div className="mt-1 text-xs text-ink-3">{step}</div>}
         {lastError && !done && <div className="mt-1 text-xs text-ink-3">Ultimo errore da Atom (riprova da solo): {lastError}</div>}
       </div>
       {!active &&

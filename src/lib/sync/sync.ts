@@ -1,6 +1,7 @@
 import { eq, max, sql } from "drizzle-orm";
-import { AtomClient, atomAccountFromEnv, type AtomRide } from "@/lib/atom/client";
+import { AtomClient, DATE_RANGE_SHAPES, atomAccountFromEnv, type AtomRide } from "@/lib/atom/client";
 import { db, schema } from "@/lib/db";
+import { addDays, localDay } from "@/lib/dates";
 import { cityForPoint, distanceKm, type CityArea } from "@/lib/geo";
 import { ITALIAN_CITIES } from "@/lib/italian-cities";
 import { mapCustomer, mapRide, mapVehicle } from "./map";
@@ -180,8 +181,18 @@ export async function syncFromAtom(client = new AtomClient(atomAccountFromEnv())
 }
 
 type BackfillState = {
-  /** Prima tutte le corse, poi tutti i clienti. */
-  phase?: "rides" | "customers";
+  /**
+   * Prima le corse recenti, poi lo storico delle corse finestra per finestra
+   * (senza filtro per data Atom restituisce solo un periodo recente), infine i clienti.
+   */
+  phase?: "rides" | "customers" | "history";
+  /** Storico: forma di date_range accettata da Atom e fine della finestra in corso (YYYY-MM-DD). */
+  rangeShape?: string | null;
+  windowEnd?: string;
+  oldestRide?: string | null;
+  customersBookmark?: string | null;
+  /** Durata dell'ultima pagina clienti, per capire se Atom è lento. */
+  lastPageMs?: number;
   bookmark: string | null;
   pages: number;
   rides: number;
@@ -250,11 +261,24 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
       state.pages++;
       state.bookmark = page.next;
       if (!page.next) {
-        state.phase = "customers";
+        state.phase = "history";
         await updateLastRides();
       }
+    } else if (state.phase === "customers" && state.rangeShape === undefined) {
+      // Import avviato con la versione precedente: prima lo storico corse, poi si riprendono i clienti da dov'erano.
+      state.customersBookmark = state.bookmark;
+      state.bookmark = null;
+      state.phase = "history";
+    } else if (state.phase === "history") {
+      if (await historyStep(client, state, vehicleCity, areas)) {
+        await updateLastRides();
+        state.phase = "customers";
+        state.bookmark = state.customersBookmark ?? null;
+      }
     } else {
+      const t = Date.now();
       const page = await client.customersPage(state.bookmark);
+      state.lastPageMs = Date.now() - t;
       state.customers += await saveCustomers(page.customers);
       state.pages++;
       state.bookmark = page.next;
@@ -265,10 +289,43 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
     }
     state.errors = 0;
     state.lastError = null;
-    if (state.pages % 10 === 0) await setBackfillState(state);
+    await setBackfillState(state);
   } while (Date.now() - started < budgetMs);
   await setBackfillState(state);
   return state;
+}
+
+const HISTORY_WINDOW_DAYS = 14;
+
+/**
+ * Una pagina dello storico corse. Va indietro a finestre di 14 giorni da oggi fino a
+ * ATOM_HISTORY_START (default 2024-01-01). Restituisce true quando lo storico è finito.
+ */
+async function historyStep(client: AtomClient, state: BackfillState, vehicleCity: Map<number, number | null>, areas: CityArea[]) {
+  const historyStart = process.env.ATOM_HISTORY_START || "2024-01-01";
+  if (state.rangeShape === undefined) {
+    const probeEnd = addDays(localDay(), -70);
+    state.rangeShape = await client.detectDateRangeShape(addDays(probeEnd, -6), probeEnd);
+    state.windowEnd = localDay();
+    if (!state.rangeShape) {
+      state.lastError = "Atom non accetta il filtro per data delle corse: importate solo le corse recenti";
+      return true;
+    }
+  }
+  if (!state.rangeShape || !state.windowEnd || state.windowEnd < historyStart) return true;
+
+  const build = DATE_RANGE_SHAPES[state.rangeShape];
+  const from = addDays(state.windowEnd, -(HISTORY_WINDOW_DAYS - 1));
+  const page = await client.ridesPage(state.bookmark, build(from, state.windowEnd));
+  state.rides += await saveRides(page.rides, vehicleCity, areas);
+  state.pages++;
+  if (page.rides.length) state.oldestRide = from;
+  state.bookmark = page.next;
+  if (!page.next) {
+    state.windowEnd = addDays(from, -1);
+    state.bookmark = null;
+  }
+  return state.windowEnd < historyStart;
 }
 
 /** Lock semplice nel database, così un solo blocco di import gira alla volta. */

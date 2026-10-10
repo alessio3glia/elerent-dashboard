@@ -1,6 +1,7 @@
 import { asc } from "drizzle-orm";
 import { deleteUser, recompute } from "@/app/actions/settings";
 import { BackfillRunner } from "./backfill-runner";
+import { backfillStepLabel } from "@/lib/backfill-label";
 import { Card, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
@@ -52,7 +53,7 @@ export default async function SettingsPage() {
       </Card>
 
       <Card title="Import dello storico Atom" className="mb-6">
-        <BackfillRunner rides={backfill?.rides ?? 0} customers={backfill?.customers ?? 0} lastError={backfill?.lastError ?? null} done={!!backfill?.done && !importRunning} running={importRunning} started={!!backfill} />
+        <BackfillRunner rides={backfill?.rides ?? 0} customers={backfill?.customers ?? 0} lastError={backfill?.lastError ?? null} step={backfillStepLabel(backfill)} done={!!backfill?.done && !importRunning} running={importRunning} started={!!backfill} />
         <p className="mt-3 text-xs text-ink-3">L&apos;import gira sul server a blocchi di circa 4 minuti che si richiamano da soli: puoi chiudere la pagina. Alla fine ricalcola KPI, alert e task.</p>
       </Card>
 

@@ -6,7 +6,7 @@ import { acquireLock, recordBackfillError, releaseLock } from "@/lib/sync/sync";
 export const maxDuration = 300;
 
 // Lascia margine sotto i 300 secondi per i tentativi ripetuti verso Atom e per avviare il blocco successivo.
-const BUDGET_MS = Number(process.env.BACKFILL_BUDGET_MS) || 180_000;
+const BUDGET_MS = Number(process.env.BACKFILL_BUDGET_MS) || 120_000;
 
 /**
  * Esegue un blocco dell'import storico in background e, se non è finito, richiama sé stesso.
