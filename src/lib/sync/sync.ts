@@ -191,6 +191,8 @@ type BackfillState = {
   windowEnd?: string;
   oldestRide?: string | null;
   customersBookmark?: string | null;
+  /** Elenco dei formati di date provati quando nessuno ha funzionato. */
+  rangeTried?: string;
   /** Durata dell'ultima pagina clienti, per capire se Atom è lento. */
   lastPageMs?: number;
   bookmark: string | null;
@@ -264,7 +266,9 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
         state.phase = "history";
         await updateLastRides();
       }
-    } else if (state.phase === "customers" && state.rangeShape === undefined) {
+    } else if (state.phase === "customers" && (state.rangeShape === undefined || (state.rangeShape === null && state.rangeTried !== shapeList()))) {
+      // Ritenta lo storico se è stato saltato con una versione che provava meno formati di date.
+      delete state.rangeShape;
       // Import avviato con la versione precedente: prima lo storico corse, poi si riprendono i clienti da dov'erano.
       state.customersBookmark = state.bookmark;
       state.bookmark = null;
@@ -296,6 +300,7 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
 }
 
 const HISTORY_WINDOW_DAYS = 14;
+const shapeList = () => Object.keys(DATE_RANGE_SHAPES).join(",");
 
 /**
  * Una pagina dello storico corse. Va indietro a finestre di 14 giorni da oggi fino a
@@ -308,6 +313,7 @@ async function historyStep(client: AtomClient, state: BackfillState, vehicleCity
     state.rangeShape = await client.detectDateRangeShape(addDays(probeEnd, -6), probeEnd);
     state.windowEnd = localDay();
     if (!state.rangeShape) {
+      state.rangeTried = shapeList();
       state.lastError = "Atom non accetta il filtro per data delle corse: importate solo le corse recenti";
       return true;
     }

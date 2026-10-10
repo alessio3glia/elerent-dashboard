@@ -1,5 +1,6 @@
 import "server-only";
-import { AtomClient, atomAccountFromEnv } from "./client";
+import { AtomClient, DATE_RANGE_SHAPES, atomAccountFromEnv } from "./client";
+import { addDays, localDay } from "@/lib/dates";
 import { isOnStreet, parseDate, parseNumber } from "./parse";
 
 const PII = /name|email|phone|document|image|photo|card|token|password|qr|vin|imei|address/i;
@@ -74,6 +75,24 @@ export async function diagnoseAtom() {
       campi: shape(r[0]),
     };
   } else report.corse = rides.error;
+
+  // Filtro per data delle corse: lo schema non è documentato, quindi si mostra cosa risponde Atom a ogni forma.
+  const probeEnd = addDays(localDay(), -70);
+  const probeFrom = addDays(probeEnd, -6);
+  const dateRange: Record<string, unknown> = { settimana_chiesta: `${probeFrom} → ${probeEnd}` };
+  const candidates: [string, unknown][] = [["oggetto vuoto {}", {}], ...Object.entries(DATE_RANGE_SHAPES).map(([k, f]) => [k, f(probeFrom, probeEnd)] as [string, unknown])];
+  for (const [name, range] of candidates) {
+    const res = await timed(() =>
+      client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/rides", { ride_status: "ENDED", page_length: 20, page_bookmark: null, date_range: range }),
+    );
+    if (!res.ok) {
+      dateRange[name] = res.error.slice(0, 400);
+      continue;
+    }
+    const days = res.value.data.map((x) => parseDate(x.history_start_date ?? x.start_time)?.toISOString().slice(0, 10)).filter(Boolean).sort();
+    dateRange[name] = days.length ? `${days.length} corse dal ${days[0]} al ${days.at(-1)}` : "0 corse";
+  }
+  report.filtro_date_corse = dateRange;
 
   const users = await timed(() => client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/users", { page_length: 20 }));
   report.clienti = users.ok
