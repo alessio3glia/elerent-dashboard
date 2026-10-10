@@ -78,8 +78,9 @@ export async function liveVehicles(): Promise<LiveVehicle[]> {
 
 /** Corse finite negli ultimi `minutes` minuti, con il punto di arrivo: sulla mappa si accendono. */
 export async function recentRideEnds(minutes = 30) {
-  return db.execute<{ id: number; lat: number; lng: number; end_time: Date; price: number | null }>(sql`
-    select atom_id as id, end_lat as lat, end_lng as lng, coalesce(end_time, start_time) as end_time, price
+  return db.execute<{ id: number; lat: number; lng: number; minutes_ago: number; price: number | null }>(sql`
+    select atom_id as id, end_lat as lat, end_lng as lng, price,
+           (extract(epoch from now() - coalesce(end_time, start_time)) / 60)::float as minutes_ago
     from rides
     where start_time >= now() - interval '6 hours' and coalesce(end_time, start_time) >= now() - make_interval(mins => ${minutes}::int)
       and end_lat is not null and end_lng is not null`);

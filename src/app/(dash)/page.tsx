@@ -28,8 +28,7 @@ export default async function OverviewPage() {
     todaySubscriptionsByCity(),
   ]);
   const subsToday = todaySubs.reduce((a, r) => ({ n: a.n + r.n, revenue: a.revenue + r.revenue }), { n: 0, revenue: 0 });
-  const nowMs = Date.now();
-  const mapRides = rideEnds.map((r) => ({ id: r.id, lat: r.lat, lng: r.lng, price: r.price, minutesAgo: (nowMs - new Date(r.end_time).getTime()) / 60_000 }));
+  const mapRides = rideEnds.map((r) => ({ id: r.id, lat: r.lat, lng: r.lng, price: r.price, minutesAgo: r.minutes_ago }));
   const counts = { corsa: 0, operativo: 0, spento: 0 };
   for (const v of mapVehicles) counts[v.state]++;
   const todayTotal = today.reduce(
