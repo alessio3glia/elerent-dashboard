@@ -197,7 +197,8 @@ export class AtomClient {
       try {
         const page = await this.ridesPage(null, build(from, to));
         const times = page.rides.map((r) => parseDate(r.history_start_date ?? r.start_time)?.getTime()).filter((t): t is number => !!t);
-        if (times.length > 0 && times.filter((t) => t >= lo && t <= hi).length >= times.length * 0.9) return name;
+        // Accettata da Atom (nessun 400) e, se ci sono corse, tutte nella settimana chiesta.
+        if (times.length === 0 || times.filter((t) => t >= lo && t <= hi).length >= times.length * 0.9) return name;
       } catch {
         // forma rifiutata da Atom: si prova la successiva
       }
@@ -205,12 +206,32 @@ export class AtomClient {
     return null;
   }
 
+  /**
+   * Come Atom vuole il segnalibro della pagina utenti. Con `bookmark_next` restituisce sempre la prima
+   * pagina (verificato da Diagnostica), quindi si prova anche `page_bookmark` come per le corse.
+   */
+  private usersBookmarkField: string | null = null;
+
+  async detectUsersPaging(): Promise<string | null> {
+    const first = await this.request<{ data: AtomCustomer[]; bookmark_next: string }>("POST", "/api/v2/admin/users", { page_length: 20 });
+    const seen = new Set(first.data.map((u) => u.id));
+    for (const field of ["page_bookmark", "bookmark", "bookmark_next"]) {
+      try {
+        const next = await this.request<{ data: AtomCustomer[] }>("POST", "/api/v2/admin/users", { page_length: 20, [field]: first.bookmark_next });
+        if (next.data.length && next.data.some((u) => !seen.has(u.id))) return (this.usersBookmarkField = field);
+      } catch {
+        // campo rifiutato: si prova il successivo
+      }
+    }
+    return null;
+  }
+
   /** Una pagina di clienti; `bookmark` null = la prima. */
-  async customersPage(bookmark: string | null) {
+  async customersPage(bookmark: string | null, field = this.usersBookmarkField ?? "page_bookmark") {
     const res = await this.request<{ data: AtomCustomer[]; has_next_page: boolean; bookmark_next: string }>(
       "POST",
       "/api/v2/admin/users",
-      { page_length: 100, bookmark_next: bookmark },
+      { page_length: 100, ...(bookmark ? { [field]: bookmark } : {}) },
     );
     return { customers: res.data, next: res.has_next_page && res.data.length > 0 ? res.bookmark_next : null };
   }

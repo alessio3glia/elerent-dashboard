@@ -202,6 +202,8 @@ type BackfillState = {
   customersBookmark?: string | null;
   /** Elenco dei formati di date provati quando nessuno ha funzionato. */
   rangeTried?: string;
+  /** Campo con cui Atom accetta il segnalibro della pagina utenti (null = nessuno funziona). */
+  usersField?: string | null;
   /** Pagine di utenti di fila senza nessun utente nuovo. */
   staleCustomerPages?: number;
   /** Durata dell'ultima pagina clienti, per capire se Atom è lento. */
@@ -291,8 +293,19 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
         state.bookmark = state.customersBookmark ?? null;
       }
     } else {
+      if (state.usersField === undefined) {
+        state.usersField = await client.detectUsersPaging();
+        state.bookmark = null;
+        state.customers = 0;
+        state.staleCustomerPages = 0;
+        if (!state.usersField) {
+          state.lastError = "Atom non permette di sfogliare gli utenti oltre la prima pagina";
+          state.done = true;
+          break;
+        }
+      }
       const t = Date.now();
-      const page = await client.customersPage(state.bookmark);
+      const page = await client.customersPage(state.bookmark, state.usersField ?? undefined);
       state.lastPageMs = Date.now() - t;
       const fresh = await countNewCustomers(page.customers.map((c) => c.id));
       await saveCustomers(page.customers);
@@ -300,7 +313,7 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
       state.pages++;
       // Se Atom ripete sempre le stesse pagine (bookmark ignorato) ci si ferma invece di girare a vuoto.
       state.staleCustomerPages = fresh > 0 ? 0 : (state.staleCustomerPages ?? 0) + 1;
-      const looping = page.next === state.bookmark || state.staleCustomerPages >= 30;
+      const looping = (!!page.next && page.next === state.bookmark) || state.staleCustomerPages >= 30;
       state.bookmark = page.next;
       if (looping) state.lastError = "Atom ripete le stesse pagine di utenti: import utenti fermato";
       if (!page.next || looping) {
@@ -319,7 +332,8 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
 }
 
 const HISTORY_WINDOW_DAYS = 14;
-const shapeList = () => Object.keys(DATE_RANGE_SHAPES).join(",");
+// Cambia la versione quando cambia il modo di riconoscere il formato, così lo storico saltato si ritenta.
+const shapeList = () => `v2:${Object.keys(DATE_RANGE_SHAPES).join(",")}`;
 
 /**
  * Una pagina dello storico corse. Va indietro a finestre di 14 giorni da oggi fino a

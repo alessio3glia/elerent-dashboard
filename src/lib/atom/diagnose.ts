@@ -95,14 +95,10 @@ export async function diagnoseAtom() {
   report.filtro_date_corse = dateRange;
 
   const users = await timed(() => client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/users", { page_length: 20 }));
-  // Paginazione utenti: la seconda pagina deve contenere utenti diversi dalla prima.
+  // Paginazione utenti: quale campo fa davvero passare alla pagina successiva.
   if (users.ok) {
-    const firstIds = new Set(users.value.data.map((u) => u.id));
-    const next = users.value.bookmark_next;
-    const page2 = await timed(() => client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/users", { page_length: 20, bookmark_next: next }));
-    report.clienti_pagina_2 = page2.ok
-      ? `${page2.value.data.length} utenti, ${page2.value.data.filter((u) => firstIds.has(u.id)).length} già nella prima pagina; record_count ${users.value.record_count ?? "assente"}`
-      : page2.error;
+    const field = await timed(() => client.detectUsersPaging());
+    report.clienti_paginazione = field.ok ? (field.value ? `funziona con "${field.value}"` : "nessun campo porta alla pagina 2") : field.error;
   }
 
   report.clienti = users.ok
