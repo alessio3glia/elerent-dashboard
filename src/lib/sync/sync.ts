@@ -126,8 +126,12 @@ export async function updateLastRides() {
 }
 
 export async function syncCustomers(client: AtomClient) {
+  return saveCustomers(await client.customers());
+}
+
+async function saveCustomers(atomCustomers: Parameters<typeof mapCustomer>[0][]) {
   const now = new Date();
-  const rows = (await client.customers()).map(mapCustomer);
+  const rows = atomCustomers.map(mapCustomer);
   for (const part of chunks(rows)) {
     await db
       .insert(customers)
@@ -175,7 +179,16 @@ export async function syncFromAtom(client = new AtomClient(atomAccountFromEnv())
   });
 }
 
-type BackfillState = { bookmark: string | null; pages: number; rides: number; done: boolean; startedAt: string };
+type BackfillState = {
+  /** Prima tutte le corse, poi tutti i clienti. */
+  phase?: "rides" | "customers";
+  bookmark: string | null;
+  pages: number;
+  rides: number;
+  customers?: number;
+  done: boolean;
+  startedAt: string;
+};
 
 export async function getBackfillState(): Promise<BackfillState | null> {
   const [row] = await db.select().from(syncState).where(eq(syncState.key, "backfill"));
@@ -200,27 +213,61 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
   let vehicleCity: Map<number, number | null>;
 
   if (!state || state.done) {
-    state = { bookmark: null, pages: 0, rides: 0, done: false, startedAt: new Date().toISOString() };
+    state = { phase: "rides", bookmark: null, pages: 0, rides: 0, customers: 0, done: false, startedAt: new Date().toISOString() };
     const fleet = await syncVehicles(client, areas);
     vehicleCity = fleet.vehicleCity;
     areas = fleet.areas;
-    await syncCustomers(client);
   } else {
     vehicleCity = new Map((await db.select({ a: vehicles.atomId, c: vehicles.cityId }).from(vehicles)).map((v) => [v.a, v.c]));
   }
+  state.phase ??= "rides";
+  state.customers ??= 0;
 
-  while (Date.now() - started < budgetMs) {
-    const page = await client.ridesPage(state.bookmark);
-    state.rides += await saveRides(page.rides, vehicleCity, areas);
-    state.pages++;
-    state.bookmark = page.next;
-    if (!page.next) {
-      state.done = true;
-      break;
+  // Almeno una pagina per blocco, così ogni blocco fa sempre un passo avanti.
+  do {
+    if (state.phase === "rides") {
+      const page = await client.ridesPage(state.bookmark);
+      state.rides += await saveRides(page.rides, vehicleCity, areas);
+      state.pages++;
+      state.bookmark = page.next;
+      if (!page.next) {
+        state.phase = "customers";
+        await updateLastRides();
+      }
+    } else {
+      const page = await client.customersPage(state.bookmark);
+      state.customers += await saveCustomers(page.customers);
+      state.pages++;
+      state.bookmark = page.next;
+      if (!page.next) {
+        state.done = true;
+        break;
+      }
     }
     if (state.pages % 10 === 0) await setBackfillState(state);
-  }
+  } while (Date.now() - started < budgetMs);
   await setBackfillState(state);
-  if (state.done) await updateLastRides();
   return state;
+}
+
+/** Lock semplice nel database, così un solo blocco di import gira alla volta. */
+export async function acquireLock(name: string, ms: number): Promise<boolean> {
+  const until = new Date(Date.now() + ms).toISOString();
+  const rows = await db.execute<{ key: string }>(sql`
+    insert into sync_state (key, value, updated_at) values (${name}, ${JSON.stringify({ until })}::jsonb, now())
+    on conflict (key) do update set value = excluded.value, updated_at = now()
+    where (sync_state.value->>'until')::timestamptz < now()
+    returning key`);
+  return rows.length > 0;
+}
+
+export async function releaseLock(name: string) {
+  await db.execute(sql`delete from sync_state where key = ${name}`);
+}
+
+export async function isLocked(name: string): Promise<boolean> {
+  const rows = await db.execute<{ key: string }>(
+    sql`select key from sync_state where key = ${name} and (value->>'until')::timestamptz > now()`,
+  );
+  return rows.length > 0;
 }

@@ -3,11 +3,13 @@
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { triggerBackfillStep } from "@/lib/backfill-chain";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import { localDay } from "@/lib/dates";
-import { recomputeAll, runBackfill } from "@/lib/pipeline";
+import { recomputeAll } from "@/lib/pipeline";
 import { generateDailyTasks } from "@/lib/rules/run";
 
 const optionalText = z.string().trim().transform((s) => s || null);
@@ -81,10 +83,11 @@ export async function recompute() {
   revalidatePath("/", "layout");
 }
 
-/** Un blocco dell'import storico (circa 4 minuti). Il pulsante lo richiama finché non risulta completato. */
-export async function importHistoryStep(restart: boolean) {
+/** Avvia l'import dello storico in background sul server: prosegue da solo anche a pagina chiusa. */
+export async function startHistoryImport(restart: boolean) {
   await requireAdmin();
-  const result = await runBackfill(240_000, restart);
-  if (result.state.done) revalidatePath("/", "layout");
-  return { rides: result.state.rides, done: result.state.done };
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  await triggerBackfillStep(`${proto}://${host}`, restart);
 }

@@ -5,7 +5,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import { lastSync, listCities } from "@/lib/queries";
-import { getBackfillState } from "@/lib/sync/sync";
+import { getBackfillState, isLocked } from "@/lib/sync/sync";
 
 // L'import dello storico lavora a blocchi di circa 4 minuti
 export const maxDuration = 300;
@@ -19,6 +19,7 @@ export default async function SettingsPage() {
     lastSync(),
     getBackfillState(),
   ]);
+  const importRunning = await isLocked("backfill_lock");
   const counts = sync?.counts as { vehicles?: number; vehiclesWithoutCity?: number; rides?: number; customers?: number } | null;
   return (
     <>
@@ -50,8 +51,8 @@ export default async function SettingsPage() {
       </Card>
 
       <Card title="Import dello storico Atom" className="mb-6">
-        <BackfillRunner initial={backfill ? { rides: backfill.rides, done: backfill.done } : null} />
-        <p className="mt-3 text-xs text-ink-3">L&apos;import procede a blocchi di circa 4 minuti, uno dopo l&apos;altro, finché la pagina resta aperta. Se la chiudi, riprende da dove era arrivato.</p>
+        <BackfillRunner rides={backfill?.rides ?? 0} done={!!backfill?.done && !importRunning} running={importRunning} started={!!backfill} />
+        <p className="mt-3 text-xs text-ink-3">L&apos;import gira sul server a blocchi di circa 4 minuti che si richiamano da soli: puoi chiudere la pagina. Alla fine ricalcola KPI, alert e task.</p>
       </Card>
 
       <Card title="Città e affiliati" className="mb-6">

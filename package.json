@@ -17,6 +17,7 @@
     "daily": "tsx scripts/daily.mts"
   },
   "dependencies": {
+    "@vercel/functions": "^3.9.11",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.4",
     "jose": "^6.2.12",

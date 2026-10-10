@@ -1,54 +1,47 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { importHistoryStep } from "@/app/actions/settings";
+import { useEffect, useState, useTransition } from "react";
+import { startHistoryImport } from "@/app/actions/settings";
 
-type Props = { initial: { rides: number; done: boolean } | null };
+type Props = { rides: number; done: boolean; running: boolean; started: boolean };
 
-/** Avvia l'import dello storico e lo porta avanti da solo, blocco dopo blocco, finché la pagina resta aperta. */
-export function BackfillRunner({ initial }: Props) {
+/** Avvia l'import storico, che prosegue sul server; la pagina si aggiorna da sola per mostrare l'avanzamento. */
+export function BackfillRunner({ rides, done, running, started }: Props) {
   const router = useRouter();
-  const [state, setState] = useState(initial);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const [justStarted, setJustStarted] = useState(false);
+  const active = (running || justStarted) && !done;
 
-  async function run(restart: boolean) {
-    setRunning(true);
-    setError(null);
-    try {
-      let first = true;
-      for (;;) {
-        const next = await importHistoryStep(restart && first);
-        first = false;
-        setState(next);
-        if (next.done) break;
-      }
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => router.refresh(), 10_000);
+    return () => clearInterval(id);
+  }, [active, router]);
+
+  const start = (restart: boolean) =>
+    startTransition(async () => {
+      await startHistoryImport(restart);
+      setJustStarted(true);
       router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore durante l'import");
-    } finally {
-      setRunning(false);
-    }
-  }
+    });
 
-  const rides = state?.rides.toLocaleString("it-IT", { useGrouping: "always" }) ?? "0";
+  const count = rides.toLocaleString("it-IT", { useGrouping: "always" });
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
       <div className="text-ink-2">
-        {running && (
-          <span className="text-brand">Import in corso: {rides} corse importate. Tieni aperta questa pagina.</span>
-        )}
-        {!running && !state && "Non ancora avviato. Le città vengono create da sole in base a dove sono i veicoli."}
-        {!running && state && !state.done && `Interrotto a ${rides} corse: premi “Continua” per riprendere.`}
-        {!running && state?.done && `Completato: ${rides} corse importate.`}
-        {error && <div className="mt-1 text-critical">{error}</div>}
+        {active && !done && <span className="text-brand">Import in corso sul server: {count} corse importate. Puoi chiudere la pagina.</span>}
+        {!active && !started && "Non ancora avviato. Le città vengono create da sole in base a dove sono i veicoli."}
+        {!active && started && !done && `Fermo a ${count} corse: premi “Continua” per riprendere.`}
+        {done && `Completato: ${count} corse importate.`}
       </div>
-      {!running &&
-        (state?.done ? (
-          <button onClick={() => run(true)} className="btn-secondary">Reimporta tutto</button>
+      {!active &&
+        (done ? (
+          <button disabled={pending} onClick={() => start(true)} className="btn-secondary">Reimporta tutto</button>
         ) : (
-          <button onClick={() => run(false)} className="btn-primary">{state ? "Continua import" : "Importa tutto lo storico"}</button>
+          <button disabled={pending} onClick={() => start(false)} className="btn-primary">
+            {started ? "Continua import" : "Importa tutto lo storico"}
+          </button>
         ))}
     </div>
   );

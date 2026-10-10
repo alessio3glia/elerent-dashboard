@@ -148,19 +148,27 @@ export class AtomClient {
     return out;
   }
 
-  async customers(maxPages = 500): Promise<AtomCustomer[]> {
+  /** Una pagina di clienti; `bookmark` null = la prima. */
+  async customersPage(bookmark: string | null) {
+    const res = await this.request<{ data: AtomCustomer[]; has_next_page: boolean; bookmark_next: string }>(
+      "POST",
+      "/api/v2/admin/users",
+      { page_length: 100, bookmark_next: bookmark },
+    );
+    return { customers: res.data, next: res.has_next_page && res.data.length > 0 ? res.bookmark_next : null };
+  }
+
+  /** Clienti pagina per pagina, fermandosi alla scadenza `deadline` (timestamp ms) per stare nei limiti di Vercel. */
+  async customers(deadline = Date.now() + 120_000): Promise<AtomCustomer[]> {
     const out: AtomCustomer[] = [];
     let bookmark: string | null = null;
-    for (let i = 0; i < maxPages; i++) {
-      const res: { data: AtomCustomer[]; has_next_page: boolean; bookmark_next: string } = await this.request(
-        "POST",
-        "/api/v2/admin/users",
-        { page_length: 100, bookmark_next: bookmark },
-      );
-      out.push(...res.data);
-      if (!res.has_next_page || res.data.length === 0) break;
-      bookmark = res.bookmark_next;
+    while (Date.now() < deadline) {
+      const page = await this.customersPage(bookmark);
+      out.push(...page.customers);
+      if (!page.next) break;
+      bookmark = page.next;
     }
     return out;
   }
+
 }
