@@ -6,7 +6,8 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
 import { SEGMENTS, segmentRecipients, type Segment } from "@/lib/customers";
 import { db, schema } from "@/lib/db";
-import { placeholders } from "@/lib/notification-suggestions";
+import { aiSuggestions } from "@/lib/notification-ai";
+import { pickSuggestions, placeholders, type Suggestion } from "@/lib/notification-suggestions";
 import { oneSignalConfig, sendPush } from "@/lib/onesignal";
 
 export type SendState = { ok?: string; error?: string } | undefined;
@@ -78,4 +79,20 @@ export async function sendNotification(_prev: SendState, form: FormData): Promis
     revalidatePath("/notifiche");
     return { error: msg };
   }
+}
+
+const RegenForm = z.object({
+  segment: z.string().refine((s) => s in SEGMENTS),
+  cityName: z.string().optional(),
+  shown: z.array(z.object({ title: z.string(), body: z.string() })).max(30),
+});
+
+/** Nuove idee di testo per il pulsante "Rigenera": da Claude se configurato, altrimenti dal catalogo. */
+export async function regenerateSuggestions(input: z.input<typeof RegenForm>): Promise<{ suggestions: Suggestion[]; source: "ai" | "catalogo" }> {
+  await requireUser();
+  const { segment, cityName, shown } = RegenForm.parse(input);
+  const seg = SEGMENTS[segment as Segment];
+  const ai = await aiSuggestions({ segmentLabel: seg.label, segmentDescription: seg.description, goal: seg.push, cityName, avoid: shown });
+  if (ai) return { suggestions: ai, source: "ai" };
+  return { suggestions: pickSuggestions(segment, cityName, shown.map((s) => s.title)), source: "catalogo" };
 }
