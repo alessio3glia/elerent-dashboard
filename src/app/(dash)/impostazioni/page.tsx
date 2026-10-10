@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 import { lastSync, listCities } from "@/lib/queries";
 import { getBackfillState, isLocked } from "@/lib/sync/sync";
+import { BACKFILL_LOCK } from "@/lib/backfill-chain";
 
 // L'import dello storico lavora a blocchi di circa 4 minuti
 export const maxDuration = 300;
@@ -19,7 +20,7 @@ export default async function SettingsPage() {
     lastSync(),
     getBackfillState(),
   ]);
-  const importRunning = await isLocked("backfill_lock");
+  const importRunning = await isLocked(BACKFILL_LOCK);
   const counts = sync?.counts as { vehicles?: number; vehiclesWithoutCity?: number; rides?: number; customers?: number } | null;
   return (
     <>
@@ -51,7 +52,7 @@ export default async function SettingsPage() {
       </Card>
 
       <Card title="Import dello storico Atom" className="mb-6">
-        <BackfillRunner rides={backfill?.rides ?? 0} done={!!backfill?.done && !importRunning} running={importRunning} started={!!backfill} />
+        <BackfillRunner rides={backfill?.rides ?? 0} customers={backfill?.customers ?? 0} lastError={backfill?.lastError ?? null} done={!!backfill?.done && !importRunning} running={importRunning} started={!!backfill} />
         <p className="mt-3 text-xs text-ink-3">L&apos;import gira sul server a blocchi di circa 4 minuti che si richiamano da soli: puoi chiudere la pagina. Alla fine ricalcola KPI, alert e task.</p>
       </Card>
 

@@ -188,11 +188,30 @@ type BackfillState = {
   customers?: number;
   done: boolean;
   startedAt: string;
+  /** Ultimo errore e quanti blocchi di fila sono falliti (si azzera al primo blocco riuscito). */
+  lastError?: string | null;
+  errors?: number;
 };
 
 export async function getBackfillState(): Promise<BackfillState | null> {
   const [row] = await db.select().from(syncState).where(eq(syncState.key, "backfill"));
   return (row?.value as BackfillState) ?? null;
+}
+
+/** Stato dell'import con l'ora dell'ultimo avanzamento salvato. */
+export async function getBackfillStatus() {
+  const [row] = await db.select().from(syncState).where(eq(syncState.key, "backfill"));
+  return row ? { state: row.value as BackfillState, updatedAt: row.updatedAt } : null;
+}
+
+/** Registra un blocco fallito; restituisce quanti blocchi di fila sono falliti. */
+export async function recordBackfillError(message: string): Promise<number> {
+  const state = await getBackfillState();
+  if (!state) return 0;
+  state.errors = (state.errors ?? 0) + 1;
+  state.lastError = message.slice(0, 300);
+  await setBackfillState(state);
+  return state.errors;
 }
 
 async function setBackfillState(value: BackfillState) {
@@ -244,6 +263,8 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
         break;
       }
     }
+    state.errors = 0;
+    state.lastError = null;
     if (state.pages % 10 === 0) await setBackfillState(state);
   } while (Date.now() - started < budgetMs);
   await setBackfillState(state);

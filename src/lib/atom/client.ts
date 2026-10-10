@@ -55,6 +55,29 @@ export function atomAccountFromEnv(): AtomAccount {
   return { email, password };
 }
 
+const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
+const BACKOFF_MS = [2_000, 5_000, 15_000, 30_000];
+
+/**
+ * fetch con timeout e nuovi tentativi sugli errori temporanei (rete, 429, 5xx),
+ * così una pagina lenta o un limite di richieste non ferma l'import.
+ */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(45_000) });
+      if (!TRANSIENT.has(res.status) || attempt >= BACKOFF_MS.length) return res;
+      const retryAfter = Number(res.headers.get("retry-after"));
+      await sleep(retryAfter > 0 ? Math.min(retryAfter * 1000, 60_000) : BACKOFF_MS[attempt]);
+    } catch (error) {
+      if (attempt >= BACKOFF_MS.length) throw error;
+      await sleep(BACKOFF_MS[attempt]);
+    }
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export class AtomClient {
   private token: string | null = null;
   private readonly baseUrl: string;
@@ -64,7 +87,7 @@ export class AtomClient {
   }
 
   private async login() {
-    const res = await fetch(`${this.baseUrl}/api/v2/admin/login/openapi`, {
+    const res = await fetchWithRetry(`${this.baseUrl}/api/v2/admin/login/openapi`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ email: this.account.email, password: this.account.password }),
@@ -80,7 +103,7 @@ export class AtomClient {
 
   async request<T>(method: "GET" | "POST", path: string, body?: unknown, attempt = 0): Promise<T> {
     if (!this.token) await this.login();
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithRetry(`${this.baseUrl}${path}`, {
       method,
       headers: {
         "Content-Type": "application/json",

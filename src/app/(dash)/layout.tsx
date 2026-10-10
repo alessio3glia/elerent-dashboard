@@ -1,7 +1,10 @@
 import { and, eq, gte } from "drizzle-orm";
+import { headers } from "next/headers";
+import { after } from "next/server";
 import { logout } from "@/app/actions/auth";
 import { Nav } from "@/components/nav";
 import { requireUser } from "@/lib/auth/session";
+import { resumeBackfillIfStalled } from "@/lib/backfill-chain";
 import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 
@@ -9,6 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function DashLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
+  // Se l'import dello storico si è fermato a metà, lo fa ripartire dopo aver mostrato la pagina.
+  after(() => resumeBackfillIfStalled(origin).catch((error) => console.error("Ripresa import non riuscita", error)));
   const open = await db
     .select({ id: schema.tasks.id })
     .from(schema.tasks)
