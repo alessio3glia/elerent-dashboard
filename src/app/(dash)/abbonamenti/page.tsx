@@ -45,11 +45,11 @@ export default async function SubscriptionsPage() {
       <PageHeader
         title="Abbonamenti"
         subtitle={
-          state.lastError
-            ? `Ultimo errore da Atom: ${state.lastError}`
+          state.lastError || state.history?.error
+            ? `Ultimo errore da Atom: ${state.lastError ?? state.history?.error}`
             : state.done
               ? `${formatMetric(total?.n ?? 0, "num")} acquisti importati · aggiornati ogni pochi minuti`
-              : `Import dello storico in corso: ${formatMetric(total?.n ?? 0, "num")} acquisti finora`
+              : `Import dello storico in corso: ${formatMetric(total?.n ?? 0, "num")} acquisti finora${state.history?.windowEnd ? `, arrivato al ${new Date(`${state.history.windowEnd}T12:00:00Z`).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}` : ""}`
         }
       />
 

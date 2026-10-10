@@ -6,7 +6,7 @@ import { addDays, localDay } from "@/lib/dates";
 import type { CityArea } from "@/lib/geo";
 import { computeMetrics } from "@/lib/metrics/compute";
 import { nameCities, updateCityActivity } from "@/lib/sync/cities";
-import { syncSubscriptions } from "@/lib/sync/subscriptions";
+import { getSubscriptionsState, syncSubscriptions } from "@/lib/sync/subscriptions";
 import { acquireLock, activeAreas, countNewCustomers, getBackfillState, releaseLock, saveCustomers, saveRides, slugify, syncVehicles, updateLastRides } from "@/lib/sync/sync";
 
 const { rides, vehicles, syncState } = schema;
@@ -103,7 +103,9 @@ export async function liveSync(force = false) {
 
     // Abbonamenti acquistati: tutto lo storico al primo giro (a blocchi), poi solo i nuovi.
     await step("abbonamenti", async () => {
-      next.subscriptions = (await syncSubscriptions(client, Date.now() + 30_000)).fresh;
+      // Finché lo storico non è completo si dà più tempo (60 s) a ogni giro.
+      const done = (await getSubscriptionsState()).done;
+      next.subscriptions = (await syncSubscriptions(client, Date.now() + (done ? 30_000 : 60_000))).fresh;
     });
 
     // Città: nomi veri e solo quelle operative nell'ultimo anno.

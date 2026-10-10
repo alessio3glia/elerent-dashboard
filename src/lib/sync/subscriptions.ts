@@ -33,7 +33,11 @@ type Probe = { endpoint: string; mode: string; result: string };
 
 type SourceState = { mode?: Mode; cursor?: string | null; done?: boolean };
 
+/** Storico a finestre di date (Atom senza filtro restituisce solo gli acquisti recenti, come per le corse). */
+type HistoryState = { windowEnd?: string; cursor?: string | null; done?: boolean; windows?: number; error?: string | null };
+
 export type SubscriptionsState = {
+  history?: HistoryState;
   /** Stato per endpoint: acquisti attivi e storico acquisti. */
   sources?: Record<string, SourceState>;
   /** Primo giro completo di tutte le fonti finito. */
@@ -237,7 +241,16 @@ export async function syncSubscriptions(client: AtomClient, deadline = Date.now(
       }
       next.sources![path] = src;
     }
-    next.done = SOURCES.every((p) => next.sources![p]?.done);
+    // Storico completo: finestre di 14 giorni all'indietro fino all'inizio, con il filtro date delle corse.
+    const histMode = next.sources![HISTORY]?.mode;
+    if (histMode && !next.history?.done && Date.now() < deadline) {
+      const result = await historyWindows(client, histMode, { ...next.history }, plans, deadline);
+      next.history = result.state;
+      fresh += result.fresh;
+      next.saved = (next.saved ?? 0) + result.fresh;
+      next.pages = (next.pages ?? 0) + result.pages;
+    }
+    next.done = SOURCES.every((p) => next.sources![p]?.done) && !!next.history?.done;
     if (probes.length) next.probes = probes;
     if (!(next.saved ?? 0) && !next.probes?.length) next.lastError = "Atom non ha restituito nessun acquisto";
     await assignSubscriptionCities();
@@ -249,6 +262,60 @@ export async function syncSubscriptions(client: AtomClient, deadline = Date.now(
     await writeState(next);
     throw error;
   }
+}
+
+const HISTORY_START = () => process.env.ATOM_HISTORY_START ?? "2024-01-01";
+const WINDOW_DAYS = 14;
+const shiftDay = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** Scarica lo storico una finestra di date alla volta, dalla più recente, riprendendo da dove era arrivato. */
+async function historyWindows(client: AtomClient, mode: Mode, h: HistoryState, plans: Map<string, Row>, deadline: number) {
+  let fresh = 0;
+  let pages = 0;
+  h.windowEnd ??= today();
+  while (Date.now() < deadline && !h.done) {
+    if (h.windowEnd < HISTORY_START()) {
+      h.done = true;
+      break;
+    }
+    const from = shiftDay(h.windowEnd, -(WINDOW_DAYS - 1));
+    const range = { from, to: h.windowEnd };
+    const body = mode.startsWith("page")
+      ? { page: Number(h.cursor ?? 1), page_length: 100, date_range: range }
+      : { page_length: 100, page_bookmark: h.cursor ?? null, date_range: range };
+    let res: Row;
+    try {
+      res = await client.request<Row>("POST", HISTORY, body);
+    } catch (error) {
+      // Filtro per date rifiutato: lo storico resta quello che Atom dà senza filtro.
+      h.error = `filtro date rifiutato: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`;
+      h.done = true;
+      break;
+    }
+    pages++;
+    const data = rowsOf(res);
+    // Se Atom ignora il filtro arrivano sempre gli acquisti recenti: ci si ferma invece di girare a vuoto.
+    const dates = data.map((r) => mapSubscription(r, plans)?.purchasedAt?.getTime()).filter((t): t is number => !!t);
+    const lo = Date.parse(`${from}T00:00:00Z`) - 2 * 86_400_000;
+    const hi = Date.parse(`${h.windowEnd}T23:59:59Z`) + 2 * 86_400_000;
+    if (dates.length && dates.filter((t) => t >= lo && t <= hi).length < dates.length * 0.5) {
+      h.error = "Atom ignora il filtro per date sugli abbonamenti";
+      h.done = true;
+      break;
+    }
+    fresh += (await save(data, plans)).fresh;
+    const more = (res.has_next_page ?? res.has_next) && data.length > 0;
+    const bookmark = (res.bookmark_next ?? res.next_bookmark) as string | null | undefined;
+    const nextCursor = more ? (mode.startsWith("page") ? String(Number(h.cursor ?? 1) + 1) : (bookmark ?? null)) : null;
+    if (nextCursor && nextCursor !== h.cursor) {
+      h.cursor = nextCursor;
+    } else {
+      h.cursor = null;
+      h.windowEnd = shiftDay(from, -1);
+      h.windows = (h.windows ?? 0) + 1;
+    }
+  }
+  return { state: h, fresh, pages };
 }
 
 /** Riparte dall'inizio dello storico (una volta al giorno, se Atom non ordina dal più recente). */
