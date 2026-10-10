@@ -16,7 +16,23 @@ export function TaskCard({ task, city, today }: { task: Task; city: City; today:
         <Link href={`/citta/${city.slug}`} className="hover:text-brand">{city.name}</Link>
         {task.day !== today && <span className="text-warning">dal {formatDay(task.day)}</span>}
       </div>
-      <h3 className={`mt-2 text-base font-medium ${done ? "line-through" : ""}`}>{task.title}</h3>
+      <div className="mt-2 flex items-start gap-3">
+        {/* Casella: spunta veloce (fatta) o, se già spuntata, la riapre. Ogni spunta finisce in Attività svolte. */}
+        <form action={completeTask}>
+          <input type="hidden" name="id" value={task.id} />
+          <button
+            name="status"
+            value={done ? "aperta" : "fatta"}
+            title={done ? "Riapri" : "Segna come fatta"}
+            className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded border text-xs font-bold ${
+              task.status === "fatta" ? "border-brand bg-brand text-black" : "border-ink-3 hover:border-brand"
+            }`}
+          >
+            {task.status === "fatta" ? "✓" : task.status === "saltata" ? "–" : ""}
+          </button>
+        </form>
+        <h3 className={`text-base font-medium ${done ? "line-through" : ""}`}>{task.title}</h3>
+      </div>
       <p className="mt-1 text-sm text-ink-2">{task.reason}</p>
       <p className="mt-2 text-sm">
         <span className="text-brand">Cosa fare:</span> {task.action}
