@@ -130,6 +130,15 @@ export async function syncCustomers(client: AtomClient) {
   return saveCustomers(await client.customers());
 }
 
+/** Quanti di questi utenti Atom non sono ancora nel database. */
+async function countNewCustomers(atomIds: number[]): Promise<number> {
+  if (!atomIds.length) return 0;
+  const [row] = await db.execute<{ n: number }>(
+    sql`select count(*)::int as n from customers where atom_id in (${sql.join(atomIds.map((id) => sql`${id}`), sql`, `)})`,
+  );
+  return atomIds.length - (row?.n ?? 0);
+}
+
 async function saveCustomers(atomCustomers: Parameters<typeof mapCustomer>[0][]) {
   const now = new Date();
   const rows = atomCustomers.map(mapCustomer);
@@ -193,6 +202,8 @@ type BackfillState = {
   customersBookmark?: string | null;
   /** Elenco dei formati di date provati quando nessuno ha funzionato. */
   rangeTried?: string;
+  /** Pagine di utenti di fila senza nessun utente nuovo. */
+  staleCustomerPages?: number;
   /** Durata dell'ultima pagina clienti, per capire se Atom è lento. */
   lastPageMs?: number;
   bookmark: string | null;
@@ -283,16 +294,24 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
       const t = Date.now();
       const page = await client.customersPage(state.bookmark);
       state.lastPageMs = Date.now() - t;
-      state.customers += await saveCustomers(page.customers);
+      const fresh = await countNewCustomers(page.customers.map((c) => c.id));
+      await saveCustomers(page.customers);
+      state.customers += fresh;
       state.pages++;
+      // Se Atom ripete sempre le stesse pagine (bookmark ignorato) ci si ferma invece di girare a vuoto.
+      state.staleCustomerPages = fresh > 0 ? 0 : (state.staleCustomerPages ?? 0) + 1;
+      const looping = page.next === state.bookmark || state.staleCustomerPages >= 30;
       state.bookmark = page.next;
-      if (!page.next) {
+      if (looping) state.lastError = "Atom ripete le stesse pagine di utenti: import utenti fermato";
+      if (!page.next || looping) {
         state.done = true;
         break;
       }
     }
-    state.errors = 0;
-    state.lastError = null;
+    if (state.errors) {
+      state.errors = 0;
+      state.lastError = null;
+    }
     await setBackfillState(state);
   } while (Date.now() - started < budgetMs);
   await setBackfillState(state);

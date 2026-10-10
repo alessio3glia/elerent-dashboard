@@ -95,6 +95,16 @@ export async function diagnoseAtom() {
   report.filtro_date_corse = dateRange;
 
   const users = await timed(() => client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/users", { page_length: 20 }));
+  // Paginazione utenti: la seconda pagina deve contenere utenti diversi dalla prima.
+  if (users.ok) {
+    const firstIds = new Set(users.value.data.map((u) => u.id));
+    const next = users.value.bookmark_next;
+    const page2 = await timed(() => client.request<Page<Record<string, unknown>>>("POST", "/api/v2/admin/users", { page_length: 20, bookmark_next: next }));
+    report.clienti_pagina_2 = page2.ok
+      ? `${page2.value.data.length} utenti, ${page2.value.data.filter((u) => firstIds.has(u.id)).length} già nella prima pagina; record_count ${users.value.record_count ?? "assente"}`
+      : page2.error;
+  }
+
   report.clienti = users.ok
     ? { ms: users.ms, chiavi: Object.keys(users.value), formato_data: users.value.data[0]?.date, campi: shape(users.value.data[0]) }
     : users.error;
