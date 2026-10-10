@@ -208,6 +208,25 @@ export const tasks = pgTable(
   (t) => [uniqueIndex("tasks_city_day_rule").on(t.cityId, t.day, t.rule)],
 );
 
+/** Registro di tutto quello che fanno i dipendenti: task spuntate o saltate e attività aggiunte a mano. */
+export const activities = pgTable(
+  "activities",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id"),
+    userName: text("user_name").notNull(),
+    /** Giorno lavorativo (ora italiana). */
+    day: date("day").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    kind: text("kind").notNull(), // task_fatta | task_saltata | attivita
+    title: text("title").notNull(),
+    note: text("note"),
+    cityId: integer("city_id").references(() => cities.id),
+    taskId: integer("task_id").references(() => tasks.id),
+  },
+  (t) => [index("activities_day").on(t.day, t.at)],
+);
+
 /** Utenti della dashboard (dipendenti Elerent). */
 export const appUsers = pgTable("app_users", {
   id: serial("id").primaryKey(),
@@ -230,6 +249,7 @@ export const syncRuns = pgTable("sync_runs", {
 
 export type City = typeof cities.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
+export type Activity = typeof activities.$inferSelect;
 export type DailyMetric = typeof dailyMetrics.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
