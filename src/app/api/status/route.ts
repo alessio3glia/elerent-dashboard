@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { BACKFILL_LOCK } from "@/lib/backfill-chain";
+import { after } from "next/server";
+import { BACKFILL_LOCK, resumeBackfillIfStalled } from "@/lib/backfill-chain";
 import { db } from "@/lib/db";
 import { getBackfillStatus, isLocked } from "@/lib/sync/sync";
 
@@ -9,7 +10,10 @@ export const dynamic = "force-dynamic";
  * Avanzamento dell'import e conteggi, senza dati personali: serve a controllare lo stato
  * dall'esterno senza fare login.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Leggere lo stato fa anche ripartire un import fermo, come aprire la dashboard.
+  const origin = new URL(request.url).origin;
+  after(() => resumeBackfillIfStalled(origin).catch((error) => console.error("Ripresa import non riuscita", error)));
   const [status, running, [counts]] = await Promise.all([
     getBackfillStatus(),
     isLocked(BACKFILL_LOCK),
