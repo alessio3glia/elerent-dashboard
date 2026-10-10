@@ -218,6 +218,8 @@ type BackfillState = {
   /** Elenco dei formati di date provati quando nessuno ha funzionato. */
   rangeTried?: string;
   refreshFleet?: boolean;
+  /** Giorno più vecchio raggiunto dalle corse recenti (fase 1). */
+  recentFrom?: string | null;
   /** Giorni toccati dall'ultimo blocco, per aggiornare subito i KPI di quel periodo. */
   touchedFrom?: string | null;
   touchedTo?: string | null;
@@ -312,6 +314,9 @@ export async function backfillStep(budgetMs = 240_000, restart = false, client =
       const page = await client.ridesPage(state.bookmark);
       state.rides += await saveRides(page.rides, vehicleCity, areas);
       touch(page.rides);
+      // Giorno più vecchio già scaricato in fase 1: lo storico riparte da lì invece che da oggi.
+      const oldest = state.touchedFrom as string | null; // aggiornato da touch(), TypeScript non lo vede
+      if (oldest && (!state.recentFrom || oldest < state.recentFrom)) state.recentFrom = oldest;
       state.pages++;
       state.bookmark = page.next;
       if (!page.next) {
@@ -391,7 +396,7 @@ async function historyStep(
   if (state.rangeShape === undefined) {
     const probeEnd = addDays(localDay(), -70);
     state.rangeShape = await client.detectDateRangeShape(addDays(probeEnd, -6), probeEnd);
-    state.windowEnd = localDay();
+    state.windowEnd = state.recentFrom ? addDays(state.recentFrom, 1) : localDay();
     if (!state.rangeShape) {
       state.rangeTried = shapeList();
       state.lastError = "Atom non accetta il filtro per data delle corse: importate solo le corse recenti";
