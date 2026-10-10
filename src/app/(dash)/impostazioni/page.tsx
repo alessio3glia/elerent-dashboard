@@ -1,5 +1,6 @@
 import { asc } from "drizzle-orm";
-import { deleteUser, importHistory, recompute } from "@/app/actions/settings";
+import { deleteUser, recompute } from "@/app/actions/settings";
+import { BackfillRunner } from "./backfill-runner";
 import { Card, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
@@ -49,21 +50,8 @@ export default async function SettingsPage() {
       </Card>
 
       <Card title="Import dello storico Atom" className="mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
-          <div className="text-ink-2">
-            {!backfill && "Non ancora avviato. Configura prima le città (centro e raggio), poi avvia l'import."}
-            {backfill && !backfill.done && `In corso: ${backfill.rides.toLocaleString("it-IT")} corse importate. Premi “Continua” finché non risulta completato.`}
-            {backfill?.done && `Completato: ${backfill.rides.toLocaleString("it-IT")} corse importate.`}
-          </div>
-          <form action={importHistory} className="flex gap-2">
-            {backfill?.done ? (
-              <button name="restart" value="1" className="btn-secondary">Reimporta tutto</button>
-            ) : (
-              <button className="btn-primary">{backfill ? "Continua import" : "Avvia import"}</button>
-            )}
-          </form>
-        </div>
-        <p className="mt-3 text-xs text-ink-3">Ogni blocco dura circa 4 minuti: la pagina resta in caricamento finché il blocco non finisce.</p>
+        <BackfillRunner initial={backfill ? { rides: backfill.rides, done: backfill.done } : null} />
+        <p className="mt-3 text-xs text-ink-3">L&apos;import procede a blocchi di circa 4 minuti, uno dopo l&apos;altro, finché la pagina resta aperta. Se la chiudi, riprende da dove era arrivato.</p>
       </Card>
 
       <Card title="Città e affiliati" className="mb-6">

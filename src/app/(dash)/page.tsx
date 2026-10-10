@@ -52,6 +52,23 @@ export default async function OverviewPage() {
 
   const openTasks = todayTasks.filter((t) => t.task.status === "aperta");
 
+  if (rows.length === 0) {
+    return (
+      <>
+        <PageHeader title="Panoramica rete" />
+        <Card>
+          <div className="py-10 text-center">
+            <div className="text-lg font-medium">Ancora nessun dato</div>
+            <p className="mx-auto mt-2 max-w-md text-sm text-ink-2">
+              Importa lo storico da Atom: le città vengono create da sole in base a dove sono i veicoli, poi qui compaiono KPI, alert e task.
+            </p>
+            <Link href="/impostazioni" className="btn-primary mt-5">Vai all&apos;import</Link>
+          </div>
+        </Card>
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader

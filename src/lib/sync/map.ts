@@ -20,12 +20,11 @@ export function mapVehicle(v: AtomVehicle, areas: CityArea[], previousCityId: nu
 }
 
 export function mapRide(r: AtomRide, vehicleCity: Map<number, number | null>, areas: CityArea[]) {
-  const start = parseDate(r.start_time);
+  const start = parseDate(r.history_start_date ?? r.start_time);
   if (!start) return null;
-  const end = parseDate(r.end_time);
-  const endLoc = r.user_end_location
-    ? { lat: r.user_end_location.latitude, lng: r.user_end_location.longitude }
-    : null;
+  const end = parseDate(r.history_end_date ?? r.end_time);
+  const loc = r.end_location ?? r.user_end_location;
+  const endLoc = loc ? { lat: loc.latitude, lng: loc.longitude } : null;
   const cityId =
     (r.vehicle_id !== null ? vehicleCity.get(r.vehicle_id) : null) ?? cityForPoint(endLoc, areas) ?? null;
   return {

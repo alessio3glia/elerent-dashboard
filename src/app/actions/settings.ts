@@ -81,9 +81,10 @@ export async function recompute() {
   revalidatePath("/", "layout");
 }
 
-/** Un blocco dell'import storico (circa 4 minuti). Si ripete finché non risulta completato. */
-export async function importHistory(form: FormData) {
+/** Un blocco dell'import storico (circa 4 minuti). Il pulsante lo richiama finché non risulta completato. */
+export async function importHistoryStep(restart: boolean) {
   await requireAdmin();
-  await runBackfill(240_000, form.get("restart") === "1");
-  revalidatePath("/", "layout");
+  const result = await runBackfill(240_000, restart);
+  if (result.state.done) revalidatePath("/", "layout");
+  return { rides: result.state.rides, done: result.state.done };
 }

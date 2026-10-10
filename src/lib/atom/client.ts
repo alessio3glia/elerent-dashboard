@@ -19,6 +19,10 @@ export type AtomRide = {
   user_id: number | null;
   paid_with_subscription?: string;
   user_end_location?: { latitude: number; longitude: number } | null;
+  end_location?: { latitude: number; longitude: number } | null;
+  /** Inizio e fine corsa in secondi Unix: più affidabili delle stringhe formattate. */
+  history_start_date?: number | null;
+  history_end_date?: number | null;
 };
 
 export type AtomVehicle = {
@@ -136,7 +140,8 @@ export class AtomClient {
     for (let i = 0; i < maxPages; i++) {
       const page = await this.ridesPage(bookmark);
       out.push(...page.rides);
-      const oldest = parseDate(page.rides.at(-1)?.start_time);
+      const last = page.rides.at(-1);
+      const oldest = parseDate(last?.history_start_date ?? last?.start_time);
       if (!page.next || (oldest && oldest < since)) break;
       bookmark = page.next;
     }

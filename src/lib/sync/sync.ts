@@ -1,7 +1,8 @@
 import { eq, max, sql } from "drizzle-orm";
 import { AtomClient, atomAccountFromEnv, type AtomRide } from "@/lib/atom/client";
 import { db, schema } from "@/lib/db";
-import type { CityArea } from "@/lib/geo";
+import { cityForPoint, distanceKm, type CityArea } from "@/lib/geo";
+import { ITALIAN_CITIES } from "@/lib/italian-cities";
 import { mapCustomer, mapRide, mapVehicle } from "./map";
 
 const { cities, vehicles, vehicleSnapshots, rides, customers, syncRuns, syncState } = schema;
@@ -16,13 +17,60 @@ const excluded = (col: string) => sql.raw(`excluded.${col}`);
 
 const activeAreas = () => db.select().from(cities).where(eq(cities.active, true));
 
+const AREA_RADIUS_KM = 15;
+
+function slugify(s: string) {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+/**
+ * Crea in automatico le città per i veicoli che non cadono in nessuna area esistente:
+ * raggruppa i veicoli vicini e dà all'area il nome del comune più vicino.
+ * Le città create si possono rinominare e regolare da Impostazioni.
+ */
+export async function createMissingCities(points: { lat: number; lng: number }[], areas: CityArea[]) {
+  const all = await db.select().from(cities);
+  const orphans = points.filter((p) => cityForPoint(p, areas) === null && cityForPoint(p, all) === null);
+  const created: string[] = [];
+  const clusters: { lat: number; lng: number; n: number }[] = [];
+  for (const p of orphans) {
+    const c = clusters.find((c) => distanceKm(p, c) <= AREA_RADIUS_KM);
+    if (c) {
+      c.lat = (c.lat * c.n + p.lat) / (c.n + 1);
+      c.lng = (c.lng * c.n + p.lng) / (c.n + 1);
+      c.n++;
+    } else clusters.push({ ...p, n: 1 });
+  }
+  for (const c of clusters.filter((c) => c.n >= 3)) {
+    const nearest = ITALIAN_CITIES.map(([name, lat, lng]) => ({ name, d: distanceKm(c, { lat, lng }) })).sort((a, b) => a.d - b.d)[0];
+    let name = nearest && nearest.d < 25 ? nearest.name : `Area ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}`;
+    if (all.some((x) => x.name === name)) name = `${name} ${all.length + created.length + 1}`;
+    const [row] = await db
+      .insert(cities)
+      .values({ name, slug: slugify(name), centerLat: c.lat, centerLng: c.lng, radiusKm: AREA_RADIUS_KM })
+      .onConflictDoNothing()
+      .returning();
+    if (row) {
+      all.push(row);
+      created.push(name);
+    }
+  }
+  return created;
+}
+
 /** Posizione attuale dei veicoli + foto della flotta. Restituisce veicolo → città. */
-export async function syncVehicles(client: AtomClient, areas: CityArea[]) {
+export async function syncVehicles(client: AtomClient, initialAreas: CityArea[]) {
   const now = new Date();
   const previous = new Map(
     (await db.select({ atomId: vehicles.atomId, cityId: vehicles.cityId }).from(vehicles)).map((v) => [v.atomId, v.cityId]),
   );
-  const rows = (await client.vehicles()).map((v) => mapVehicle(v, areas, previous.get(v.id) ?? null));
+  const atomVehicles = await client.vehicles();
+  const points = atomVehicles
+    .map((v) => (v.coordinates ? { lat: v.coordinates.latitude, lng: v.coordinates.longitude } : null))
+    .filter((p): p is { lat: number; lng: number } => p !== null && Number.isFinite(p.lat) && (p.lat !== 0 || p.lng !== 0));
+  const newCities = await createMissingCities(points, initialAreas);
+  const areas = newCities.length ? await activeAreas() : initialAreas;
+  const rows = atomVehicles.map((v) => mapVehicle(v, areas, previous.get(v.id) ?? null));
   for (const part of chunks(rows)) {
     await db
       .insert(vehicles)
@@ -46,6 +94,8 @@ export async function syncVehicles(client: AtomClient, areas: CityArea[]) {
     );
   }
   return {
+    areas,
+    newCities,
     vehicleCity: new Map(rows.map((v) => [v.atomId, v.cityId])),
     vehicles: rows.length,
     vehiclesWithoutCity: rows.filter((v) => v.cityId === null).length,
@@ -115,14 +165,13 @@ async function logged<T extends Record<string, unknown>>(kind: string, fn: () =>
 /** Sync giornaliera: veicoli, corse dall'ultima salvata (con un giorno di margine), clienti. */
 export async function syncFromAtom(client = new AtomClient(atomAccountFromEnv())) {
   return logged("atom", async () => {
-    const areas = await activeAreas();
-    const { vehicleCity, ...fleet } = await syncVehicles(client, areas);
+    const { vehicleCity, areas, newCities, ...fleet } = await syncVehicles(client, await activeAreas());
     const [{ last }] = await db.select({ last: max(rides.startTime) }).from(rides);
     const since = last ? new Date(new Date(last).getTime() - 86_400_000) : new Date(Date.now() - 30 * 86_400_000);
     const ridesSaved = await saveRides(await client.ridesSince(since), vehicleCity, areas, since);
     await updateLastRides();
     const customersSaved = await syncCustomers(client);
-    return { ...fleet, rides: ridesSaved, customers: customersSaved };
+    return { ...fleet, newCities: newCities.join(", "), rides: ridesSaved, customers: customersSaved };
   });
 }
 
@@ -147,12 +196,14 @@ async function setBackfillState(value: BackfillState) {
 export async function backfillStep(budgetMs = 240_000, restart = false, client = new AtomClient(atomAccountFromEnv())) {
   const started = Date.now();
   let state = restart ? null : await getBackfillState();
-  const areas = await activeAreas();
+  let areas: CityArea[] = await activeAreas();
   let vehicleCity: Map<number, number | null>;
 
   if (!state || state.done) {
     state = { bookmark: null, pages: 0, rides: 0, done: false, startedAt: new Date().toISOString() };
-    vehicleCity = (await syncVehicles(client, areas)).vehicleCity;
+    const fleet = await syncVehicles(client, areas);
+    vehicleCity = fleet.vehicleCity;
+    areas = fleet.areas;
     await syncCustomers(client);
   } else {
     vehicleCity = new Map((await db.select({ a: vehicles.atomId, c: vehicles.cityId }).from(vehicles)).map((v) => [v.a, v.c]));

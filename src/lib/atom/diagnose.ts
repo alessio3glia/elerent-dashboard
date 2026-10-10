@@ -1,6 +1,6 @@
 import "server-only";
 import { AtomClient, atomAccountFromEnv } from "./client";
-import { parseDate, parseNumber } from "./parse";
+import { isOnStreet, parseDate, parseNumber } from "./parse";
 
 const PII = /name|email|phone|document|image|photo|card|token|password|qr|vin|imei|address/i;
 
@@ -20,7 +20,8 @@ function shape(item: unknown): Record<string, string> {
 async function timed<T>(fn: () => Promise<T>) {
   const t = Date.now();
   try {
-    return { ok: true as const, ms: Date.now() - t, value: await fn() };
+    const value = await fn();
+    return { ok: true as const, ms: Date.now() - t, value };
   } catch (e) {
     return { ok: false as const, ms: Date.now() - t, error: e instanceof Error ? e.message : String(e) };
   }
@@ -43,6 +44,7 @@ export async function diagnoseAtom() {
       record_count: v.record_count,
       has_next_page: v.has_next_page,
       stati: [...new Set(v.data.map((x) => String(x.status)))],
+      in_strada: v.data.filter((x) => isOnStreet(x.status as string)).length,
       campi: shape(v.data[0]),
     };
   }
@@ -52,8 +54,8 @@ export async function diagnoseAtom() {
   );
   if (rides.ok) {
     const r = rides.value.data;
-    const first = parseDate(r[0]?.start_time);
-    const last = parseDate(r.at(-1)?.start_time);
+    const first = parseDate(r[0]?.history_start_date ?? r[0]?.start_time);
+    const last = parseDate(r.at(-1)?.history_start_date ?? r.at(-1)?.start_time);
     report.corse = {
       ms: rides.ms,
       chiavi: Object.keys(rides.value),
@@ -62,6 +64,7 @@ export async function diagnoseAtom() {
       formati: r.slice(0, 3).map((x) => ({
         start_time: x.start_time,
         letto_come: parseDate(x.start_time)?.toISOString() ?? "NON LETTO",
+        epoch_come: parseDate(x.history_start_date)?.toISOString() ?? "-",
         price: x.price,
         prezzo_letto: parseNumber(x.price),
         kilometers: x.kilometers,
