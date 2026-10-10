@@ -51,3 +51,14 @@ describe("stato veicolo", () => {
     expect(parseBattery(80)).toBe(80);
   });
 });
+
+describe("id da Atom", () => {
+  it('scarta "-" e valori non numerici', async () => {
+    const { toId } = await import("@/lib/sync/map");
+    expect(toId("-")).toBeNull();
+    expect(toId("")).toBeNull();
+    expect(toId(null)).toBeNull();
+    expect(toId(145539)).toBe(145539);
+    expect(toId("5907305")).toBe(5907305);
+  });
+});
