@@ -1,12 +1,12 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { regenerateSuggestions, sendNotification } from "@/app/actions/notifications";
 import { placeholders, type Suggestion } from "@/lib/notification-suggestions";
 
-type Props = { segment: string; cityId?: number; cityName?: string; recipients: number; suggestions: Suggestion[]; enabled: boolean };
+type Props = { segment: string; cityId?: number; cityName?: string; recipients: number; suggestions: Suggestion[]; enabled: boolean; aiEnabled: boolean };
 
-export function Composer({ segment, cityId, cityName, recipients, suggestions: initial, enabled }: Props) {
+export function Composer({ segment, cityId, cityName, recipients, suggestions: initial, enabled, aiEnabled }: Props) {
   const [state, action, pending] = useActionState(sendNotification, undefined);
   const [suggestions, setSuggestions] = useState(initial);
   const [seen, setSeen] = useState(initial);
@@ -23,6 +23,14 @@ export function Composer({ segment, cityId, cityName, recipients, suggestions: i
         setRegenError("Non sono riuscito a generare nuove idee, riprova.");
       }
     });
+  // Con Claude collegato le prime proposte le scrive lui; intanto si vedono quelle del catalogo
+  const asked = useRef(false);
+  useEffect(() => {
+    if (aiEnabled && !asked.current) {
+      asked.current = true;
+      regenerate();
+    }
+  });
   const [title, setTitle] = useState(suggestions[0]?.title ?? "");
   const [body, setBody] = useState(suggestions[0]?.body ?? "");
   const missing = placeholders(`${title} ${body}`);

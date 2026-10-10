@@ -92,7 +92,15 @@ export async function regenerateSuggestions(input: z.input<typeof RegenForm>): P
   await requireUser();
   const { segment, cityName, shown } = RegenForm.parse(input);
   const seg = SEGMENTS[segment as Segment];
-  const ai = await aiSuggestions({ segmentLabel: seg.label, segmentDescription: seg.description, goal: seg.push, cityName, avoid: shown });
+  // Claude impara dai testi che il team ha davvero inviato: prima quelli dello stesso gruppo, poi gli altri
+  const sent = await db
+    .select({ title: schema.notifications.title, body: schema.notifications.body, segment: schema.notifications.segment })
+    .from(schema.notifications)
+    .where(and(eq(schema.notifications.test, false), eq(schema.notifications.status, "inviata")))
+    .orderBy(desc(schema.notifications.createdAt))
+    .limit(40);
+  const liked = [...sent.filter((n) => n.segment === segment), ...sent.filter((n) => n.segment !== segment)].slice(0, 12);
+  const ai = await aiSuggestions({ segmentLabel: seg.label, segmentDescription: seg.description, goal: seg.push, cityName, avoid: shown, liked });
   if (ai) return { suggestions: ai, source: "ai" };
   return { suggestions: pickSuggestions(segment, cityName, shown.map((s) => s.title)), source: "catalogo" };
 }

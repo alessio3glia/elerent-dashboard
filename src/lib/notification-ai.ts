@@ -15,6 +15,8 @@ export async function aiSuggestions(opts: {
   goal: string;
   cityName?: string | null;
   avoid: Suggestion[];
+  /** Notifiche che il team ha scelto, eventualmente ritoccato, e inviato: lo stile da seguire. */
+  liked: Suggestion[];
 }): Promise<Suggestion[] | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   const client = new Anthropic({ timeout: 45_000, maxRetries: 1 });
@@ -35,6 +37,10 @@ export async function aiSuggestions(opts: {
             `Gruppo di utenti: ${opts.segmentLabel} (${opts.segmentDescription}).\n` +
             `Obiettivo della comunicazione: ${opts.goal}\n` +
             (opts.cityName ? `Città: ${opts.cityName}.\n` : "Tutte le città: non nominare una città.\n") +
+            (opts.liked.length
+              ? `Queste sono notifiche che il team ha scelto e inviato davvero: imitane tono, lunghezza e uso delle emoji, senza copiarle.\n` +
+                opts.liked.map((s) => `- ${s.title} / ${s.body}`).join("\n") + "\n"
+              : "") +
             `Scrivi 3 notifiche diverse tra loro e diverse da queste già proposte:\n` +
             opts.avoid.map((s) => `- ${s.title} / ${s.body}`).join("\n"),
         },

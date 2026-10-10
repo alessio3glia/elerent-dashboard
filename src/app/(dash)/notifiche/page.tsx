@@ -69,6 +69,7 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
           cityName={city?.name}
           suggestions={suggestionsFor(segment, city?.name).slice(0, 3)}
           enabled={cfg.configured}
+          aiEnabled={Boolean(process.env.ANTHROPIC_API_KEY)}
         />
       </Card>
 
