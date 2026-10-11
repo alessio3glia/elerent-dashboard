@@ -20,6 +20,9 @@ import { SendDueForm, SettingsForm } from "./forms";
 
 export const dynamic = "force-dynamic";
 
+/** Pagina dell'utente nel pannello Atom, dove si riprova il pagamento. */
+const atomCustomerUrl = (id: number) => `${process.env.ATOM_PANEL_URL ?? "https://app.atommobility.com"}/sharing/customers/${id}`;
+
 const when = (d: Date | null) => (d ? new Date(d).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 const day = (d: Date | null) => (d ? new Date(d).toLocaleDateString("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short" }) : "—");
 
@@ -161,6 +164,9 @@ export default async function RecoveryPage({ searchParams }: PageProps<"/recuper
                   <td>{day(c.last_email_at)}</td>
                   <td className="text-ink-3">{when(c.updated_at)}</td>
                   <td className="whitespace-nowrap text-right">
+                    <a href={atomCustomerUrl(c.customer_atom_id)} target="_blank" rel="noopener noreferrer" className="mr-3 rounded-md bg-brand px-2 py-1 text-xs font-semibold text-black hover:bg-brand-strong">
+                      Riprova in Atom ↗
+                    </a>
                     {c.stage < 3 && cfg.ready && c.email && (
                       <form action={sendCase} className="inline">
                         <input type="hidden" name="id" value={c.id} />
