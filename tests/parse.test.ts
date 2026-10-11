@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOnStreet, parseBattery, parseDate, parseNumber } from "@/lib/atom/parse";
+import { isOnStreet, parseBattery, parseCents, parseDate, parseNumber } from "@/lib/atom/parse";
 
 describe("parseNumber", () => {
   it("legge importi in formato europeo e inglese", () => {
@@ -60,5 +60,15 @@ describe("id da Atom", () => {
     expect(toId(null)).toBeNull();
     expect(toId(145539)).toBe(145539);
     expect(toId("5907305")).toBe(5907305);
+  });
+});
+
+describe("parseCents", () => {
+  it("legge saldo e debito Atom in centesimi", () => {
+    expect(parseCents(350)).toBe(3.5);
+    expect(parseCents(70000)).toBe(700);
+    expect(parseCents(0)).toBe(0);
+    expect(parseCents("3,50 €")).toBe(3.5);
+    expect(parseCents(null)).toBeNull();
   });
 });

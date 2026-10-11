@@ -20,6 +20,15 @@ export function parseNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Saldo e debito degli utenti: Atom li manda come numeri interi in centesimi
+ * (es. wallet 350 = 3,50 € di credito di benvenuto). Le stringhe formattate ("3,50 €") sono già in euro.
+ */
+export function parseCents(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? Math.round(value) / 100 : null;
+  return parseNumber(value);
+}
+
 // Atom restituisce date come "10/10/26 10:53:07" (gg/mm/aa) nell'ora locale italiana.
 const EU_DATE = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
 const ATOM_TZ = "Europe/Rome";

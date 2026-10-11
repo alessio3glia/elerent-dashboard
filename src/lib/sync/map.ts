@@ -1,5 +1,5 @@
 import type { AtomCustomer, AtomRide, AtomVehicle } from "@/lib/atom/client";
-import { parseBattery, parseDate, parseNumber } from "@/lib/atom/parse";
+import { parseBattery, parseCents, parseDate, parseNumber } from "@/lib/atom/parse";
 import { cityForPoint, type CityArea } from "@/lib/geo";
 
 /** Id intero da Atom; "-", stringhe vuote o valori non numerici diventano null. */
@@ -82,8 +82,8 @@ export function mapCustomer(c: AtomCustomer) {
     email: c.email ?? null,
     phone: c.phone ?? null,
     registeredAt: parseDate(c.date),
-    wallet: parseNumber(c.wallet),
-    debt: parseNumber(c.debt),
+    wallet: parseCents(c.wallet),
+    debt: parseCents(c.debt),
     rides: toInt(c.rides),
     blocked: c.blocked ?? null,
   };

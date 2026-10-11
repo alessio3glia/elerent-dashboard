@@ -67,7 +67,9 @@ export type AtomCustomer = {
   email?: string;
   phone?: string;
   date?: string;
+  /** In centesimi. */
   wallet?: number;
+  /** In centesimi. */
   debt?: number;
   rides?: number;
   blocked?: boolean;
