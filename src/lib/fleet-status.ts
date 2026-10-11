@@ -7,13 +7,13 @@ import { TZ } from "@/lib/dates";
 /** Un veicolo "manda segnale" se l'abbiamo sentito nelle ultime 24 ore. */
 export const SIGNAL_HOURS = 24;
 
-const onStreet = () => {
+export const onStreet = () => {
   const extra = (process.env.ATOM_ON_STREET_STATUSES ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
   return [...ON_STREET, ...extra];
 };
 
 /** Condizione SQL: il veicolo `v` è acceso e in strada (segnale recente, oppure stato operativo all'ultima sync). */
-const signalling = () => sql`(
+export const signalling = () => sql`(
   v.last_signal_at >= now() - make_interval(hours => ${SIGNAL_HOURS}::int)
   or (upper(v.status) in (${sql.join(onStreet().map((x) => sql`${x}`), sql`, `)}) and v.updated_at >= now() - interval '1 hour')
 )`;

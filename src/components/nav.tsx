@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/recupero", label: "Recupero crediti" },
   { href: "/analytics", label: "Analytics" },
   { href: "/citta", label: "Città" },
+  { href: "/heatmap", label: "Heatmap" },
   { href: "/utenti", label: "Utenti" },
   { href: "/abbonamenti", label: "Abbonamenti" },
   { href: "/notifiche", label: "Notifiche" },

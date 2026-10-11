@@ -325,3 +325,17 @@ export const notifications = pgTable(
   },
   (t) => [index("notifications_created").on(t.createdAt)],
 );
+
+/** Quanti mezzi erano disponibili (in strada, con segnale e batteria) per città, una foto ogni 15 minuti. */
+export const fleetAvailability = pgTable(
+  "fleet_availability",
+  {
+    id: serial("id").primaryKey(),
+    cityId: integer("city_id").references(() => cities.id),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    available: integer("available").notNull(),
+    inRide: integer("in_ride").notNull(),
+    total: integer("total").notNull(),
+  },
+  (t) => [index("fleet_availability_city_at").on(t.cityId, t.at)],
+);

@@ -5,7 +5,8 @@ import { logout } from "@/app/actions/auth";
 import { Nav } from "@/components/nav";
 import { requireUser } from "@/lib/auth/session";
 import { resumeBackfillIfStalled } from "@/lib/backfill-chain";
-import { liveSync } from "@/lib/live";
+import { getLiveState, liveSync } from "@/lib/live";
+import { STALE_MINUTES, minutesSince } from "@/lib/realtime";
 import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 
@@ -19,6 +20,8 @@ export default async function DashLayout({ children }: LayoutProps<"/">) {
   after(() => resumeBackfillIfStalled(origin).catch((error) => console.error("Ripresa import non riuscita", error)));
   // Corse nuove da Atom: se l'ultima sincronizzazione ha più di 2 minuti, la rifà dopo aver mostrato la pagina.
   after(() => liveSync().catch((error) => console.error("Sync in tempo reale non riuscita", error)));
+  const live = await getLiveState();
+  const staleMinutes = minutesSince(live?.at);
   const open = await db
     .select({ id: schema.tasks.id })
     .from(schema.tasks)
@@ -42,7 +45,14 @@ export default async function DashLayout({ children }: LayoutProps<"/">) {
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+        {staleMinutes !== null && staleMinutes > STALE_MINUTES && (
+          <div className="mb-4 rounded-lg border border-warning px-4 py-2 text-sm text-warning">
+            Dati non aggiornati: l&apos;ultima sincronizzazione con Atom è di {Math.round(staleMinutes)} minuti fa. I numeri di oggi potrebbero essere indietro.
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

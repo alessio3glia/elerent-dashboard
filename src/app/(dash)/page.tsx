@@ -2,6 +2,9 @@ import Link from "next/link";
 import { Card, Delta, PageHeader, PriorityBadge, StatTile } from "@/components/ui";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { TrendChart } from "@/components/trend-chart";
+import { PaceChart } from "@/components/hour-charts";
+import { cityHealth, freshness, hourlyToday, paceByCity, paceDelta, type Health } from "@/lib/realtime";
+import { Freshness } from "./freshness";
 import { LiveMapLoader } from "@/components/live-map-loader";
 import { liveVehicles, recentRideEnds } from "@/lib/fleet-status";
 import { subscriptionsMonthToDate } from "@/lib/subscriptions-queries";
@@ -16,7 +19,7 @@ const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b
 
 export default async function OverviewPage() {
   const last = await lastMetricDay();
-  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs] = await Promise.all([
+  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
@@ -28,7 +31,16 @@ export default async function OverviewPage() {
     recentRideEnds(30),
     todaySubscriptionsByCity(),
     subscriptionsMonthToDate(),
+    paceByCity(),
+    hourlyToday(),
+    freshness(),
   ]);
+  const health = await cityHealth(cities.filter((c) => c.active).map((c) => c.id));
+  const healthOrder: Record<Health, number> = { rosso: 0, giallo: 1, verde: 2 };
+  const healthRows = health
+    .map((h) => ({ ...h, city: cities.find((c) => c.id === h.cityId)! }))
+    .sort((a, b) => healthOrder[a.health] - healthOrder[b.health] || b.today - a.today);
+  const paceTotal = pace.reduce((a, r) => ({ today: a.today + r.today, week1: a.week1 + r.week1 }), { today: 0, week1: 0 });
   const subsMonth = monthSubs.reduce(
     (a, r) => ({ n: a.n + r.n, revenue: a.revenue + r.revenue, prevN: a.prevN + r.prev_n, prevRevenue: a.prevRevenue + r.prev_revenue }),
     { n: 0, revenue: 0, prevN: 0, prevRevenue: 0 },
@@ -122,7 +134,9 @@ export default async function OverviewPage() {
             {sync && ` · ultima sincronizzazione ${sync.startedAt.toLocaleString("it-IT", { timeZone: "Europe/Rome" })}${sync.ok === false ? " (fallita)" : ""}`}
           </>
         }
-      />
+      >
+        <Freshness data={fresh} />
+      </PageHeader>
 
       <AutoRefresh seconds={60} />
       <Card
@@ -142,7 +156,13 @@ export default async function OverviewPage() {
         className="mb-6"
       >
         <div className="flex flex-wrap gap-x-10 gap-y-3">
-          <div><div className="text-xs text-ink-3">Corse</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.rides, "num")}</div></div>
+          <div>
+            <div className="text-xs text-ink-3">Corse</div>
+            <div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.rides, "num")}</div>
+            <div className="flex items-center gap-1.5 text-xs text-ink-3">
+              <Delta value={paceDelta(paceTotal.today, paceTotal.week1)} /> vs settimana scorsa alla stessa ora
+            </div>
+          </div>
           <div><div className="text-xs text-ink-3">Fatturato</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.revenue, "eur")}</div></div>
           <div><div className="text-xs text-ink-3">Veicoli usati</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.vehicles, "num")}</div></div>
           <div>
@@ -154,11 +174,47 @@ export default async function OverviewPage() {
             {todayRows.slice(0, 12).map((r) => (
               <Link key={r.city.id} href={`/citta/${r.city.slug}`} className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs hover:text-brand">
                 {r.city.name} <span className="tabular text-ink-2">{r.rides} corse · {formatMetric(r.revenue, "eur")}</span>
+                {(() => {
+                  const p = pace.find((x) => x.city_id === r.city.id);
+                  const d = p ? paceDelta(p.today, p.week1) : null;
+                  return d === null ? null : <span className={`tabular ml-1.5 ${d >= 0 ? "text-brand" : "text-critical"}`}>{d >= 0 ? "+" : ""}{Math.round(d * 100)}%</span>;
+                })()}
               </Link>
             ))}
           </div>
         </div>
       </Card>
+
+      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Card title="Semaforo città, adesso" action={<Link href="/heatmap" className="text-xs text-brand hover:underline">Heatmap</Link>} className="xl:col-span-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {healthRows.map((h) => (
+              <Link key={h.cityId} href={`/heatmap?citta=${h.city.slug}`} className="flex items-start gap-3 rounded-lg bg-surface-2 px-3 py-2 hover:ring-1 hover:ring-line">
+                <span
+                  className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${h.health === "rosso" ? "bg-critical" : h.health === "giallo" ? "bg-warning" : "bg-brand"}`}
+                  aria-label={h.health}
+                />
+                <span className="min-w-0 text-sm">
+                  <span className="font-medium">{h.city.name}</span>
+                  <span className="tabular ml-2 text-xs text-ink-3">
+                    {h.today} corse{h.pace !== null && ` (${h.pace >= 0 ? "+" : ""}${Math.round(h.pace * 100)}%)`} · {h.signalling}/{h.vehicles} mezzi con segnale
+                  </span>
+                  <span className={`block text-xs ${h.health === "rosso" ? "text-critical" : h.health === "giallo" ? "text-warning" : "text-ink-3"}`}>
+                    {h.reasons.length ? h.reasons.join(" · ") : "tutto nella norma"}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-ink-3">
+            Ritmo contro la media degli stessi giorni delle ultime 4 settimane alla stessa ora. Rosso: corse giù del 40% o più, nessuna corsa dopo le 11,
+            meno di metà mezzi con segnale o oltre il 40% con batteria sotto il 20%. Giallo: soglie al 20%, 75% e 20%.
+          </p>
+        </Card>
+        <Card title="Ritmo di oggi, tutta la rete">
+          <PaceChart data={hourly} />
+        </Card>
+      </div>
 
       <Card
         title={`Abbonamenti di ${new Date().toLocaleDateString("it-IT", { month: "long", timeZone: "Europe/Rome" })}`}
