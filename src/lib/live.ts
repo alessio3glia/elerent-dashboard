@@ -1,6 +1,7 @@
 import "server-only";
 import { eq, max, sql } from "drizzle-orm";
 import { AtomClient, atomAccountFromEnv } from "@/lib/atom/client";
+import { AVAILABILITY_EVERY_MS, recordAvailability } from "@/lib/availability";
 import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 import type { CityArea } from "@/lib/geo";
@@ -28,6 +29,7 @@ type LiveState = {
   fleetAt?: string;
   snapshotAt?: string;
   citiesAt?: string;
+  availabilityAt?: string;
   metricsVersion?: number;
   rides?: number;
   vehicles?: number;
@@ -79,6 +81,14 @@ export async function liveSync(force = false) {
       next.fleetAt = next.at;
       if (snapshot) next.snapshotAt = next.at;
     });
+
+    // Disponibilità dei mezzi per fascia oraria: una foto ogni 15 minuti.
+    if (next.fleetAt === next.at && older(state?.availabilityAt, AVAILABILITY_EVERY_MS)) {
+      await step("disponibilità", async () => {
+        await recordAvailability();
+        next.availabilityAt = next.at;
+      });
+    }
 
     // Corse: un'ora di margine sull'ultima corsa salvata, perché le corse finiscono dopo essere iniziate.
     await step("corse", async () => {

@@ -325,3 +325,41 @@ export const notifications = pgTable(
   },
   (t) => [index("notifications_created").on(t.createdAt)],
 );
+
+/** Quanti mezzi erano disponibili (in strada, con segnale e batteria) per città, una foto ogni 15 minuti. */
+export const fleetAvailability = pgTable(
+  "fleet_availability",
+  {
+    id: serial("id").primaryKey(),
+    cityId: integer("city_id").references(() => cities.id),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    available: integer("available").notNull(),
+    inRide: integer("in_ride").notNull(),
+    total: integer("total").notNull(),
+  },
+  (t) => [index("fleet_availability_city_at").on(t.cityId, t.at)],
+);
+
+/**
+ * Aggiornamenti dati della dashboard scritti dai dipendenti (es. "Ardea non è più operativa"):
+ * le città chiuse o sospese escono dalle viste operative, le note compaiono in home.
+ */
+export const dashboardUpdates = pgTable(
+  "dashboard_updates",
+  {
+    id: serial("id").primaryKey(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    userId: integer("user_id"),
+    userName: text("user_name").notNull(),
+    kind: text("kind").notNull(), // citta_chiusa | citta_sospesa | citta_riaperta | nota
+    cityId: integer("city_id").references(() => cities.id),
+    /** Da quando vale (giorno, ora italiana). */
+    startsOn: date("starts_on").notNull(),
+    /** Fino a quando vale, compreso: solo per sospensioni e note a tempo. */
+    endsOn: date("ends_on"),
+    text: text("text").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: text("revoked_by"),
+  },
+  (t) => [index("dashboard_updates_city").on(t.cityId, t.startsOn)],
+);

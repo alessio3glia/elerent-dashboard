@@ -39,6 +39,16 @@ export type AtomRide = {
   history_end_date?: number | null;
 };
 
+export type AtomRebalancingZone = {
+  id: number;
+  title?: string;
+  coordinates?: { latitude: number; longitude: number } | null;
+  /** Raggio in metri. */
+  radius?: number;
+  count?: number | null;
+  vehicle_type_and_count?: { vehicle_type: string; count: number }[] | null;
+};
+
 export type AtomVehicle = {
   id: number;
   vehicle_number?: string;
@@ -162,6 +172,12 @@ export class AtomClient {
   }
 
   /** Una pagina di corse concluse; `bookmark` null = la prima. */
+  /** Zone di riequilibrio impostate in Atom, con quanti mezzi dovrebbero contenere. */
+  async rebalancingZones(): Promise<AtomRebalancingZone[]> {
+    const res = await this.request<{ zones?: AtomRebalancingZone[] }>("POST", "/api/v2/admin/zones/rebalancing-zones-new", {});
+    return res.zones ?? [];
+  }
+
   async ridesPage(bookmark: string | null, dateRange?: unknown) {
     const res = await this.request<{ data: AtomRide[]; has_next_page: boolean; bookmark_next: string }>(
       "POST",
