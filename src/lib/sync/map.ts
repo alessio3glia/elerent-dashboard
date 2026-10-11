@@ -82,8 +82,8 @@ export function mapCustomer(c: AtomCustomer) {
     email: c.email ?? null,
     phone: c.phone ?? null,
     registeredAt: parseDate(c.date),
-    wallet: parseNumber(c.wallet),
-    debt: parseNumber(c.debt),
+    wallet: parseCents(c.wallet),
+    debt: parseCents(c.debt),
     rides: toInt(c.rides),
     blocked: c.blocked ?? null,
   };
