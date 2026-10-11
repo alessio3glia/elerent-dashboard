@@ -44,13 +44,25 @@ export async function metricsBetween(from: string, to: string, cityIds?: number[
     .orderBy(asc(dailyMetrics.day));
 }
 
+/** Task di un solo giorno: ogni giorno si riparte da zero, quelle non fatte restano nello storico del loro giorno. */
 export async function tasksForDay(day: string) {
   return db
     .select({ task: tasks, city: cities })
     .from(tasks)
     .innerJoin(cities, eq(cities.id, tasks.cityId))
-    .where(sql`${tasks.day} = ${day} or (${tasks.status} = 'aperta' and ${tasks.day} >= ${addDays(day, -7)})`)
-    .orderBy(asc(tasks.status), asc(tasks.priority), desc(tasks.day), asc(cities.name));
+    .where(eq(tasks.day, day))
+    .orderBy(asc(tasks.status), asc(tasks.priority), asc(cities.name));
+}
+
+/** Per giorno: task create, fatte, saltate e non svolte (rimaste aperte a fine giornata). */
+export async function taskDays(from: string, to: string) {
+  return db.execute<{ day: string; total: number; fatte: number; saltate: number; aperte: number }>(sql`
+    select day::text as day, count(*)::int as total,
+      count(*) filter (where status = 'fatta')::int as fatte,
+      count(*) filter (where status = 'saltata')::int as saltate,
+      count(*) filter (where status = 'aperta')::int as aperte
+    from tasks where day between ${from} and ${to}
+    group by day order by day desc`);
 }
 
 export async function tasksForCity(cityId: number, limit = 30) {

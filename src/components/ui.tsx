@@ -32,7 +32,7 @@ export function Delta({ value, higherIsBetter = true }: { value: number | null; 
   const good = value === 0 ? null : (value > 0) === higherIsBetter;
   const color = good === null ? "text-ink-2" : good ? "text-brand" : "text-critical";
   return (
-    <span className={`tabular text-sm font-medium ${color}`}>
+    <span className={`tabular whitespace-nowrap text-sm font-medium ${color}`}>
       {value > 0 ? "▲" : value < 0 ? "▼" : "■"} {value > 0 ? "+" : ""}
       {Math.round(value * 100)}%
     </span>

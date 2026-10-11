@@ -41,6 +41,9 @@ export default async function SubscriptionsPage() {
     .sort((a, b) => b.now.revenue - a.now.revenue);
   const trend = [...new Set(months.map((r) => r.month))].sort().reverse().slice(0, 13);
 
+  // I 12 mesi prima si confrontano solo se lo storico li copre tutti, altrimenti la variazione è falsata.
+  const yearComparable = !!total?.first && new Date(total.first) <= new Date(new Date(`${today}T12:00:00Z`).getTime() - 730 * 86_400_000);
+  const yearChange = (a: number, b: number) => (yearComparable ? change(a, b) : null);
   const named = plans.filter((p) => p.n_year > 0);
   const yearTotal = named.reduce((a, p) => a + p.n_year, 0);
   const best = named[0];
@@ -78,8 +81,8 @@ export default async function SubscriptionsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile label={`Venduti a ${monthLabel(current)}`} value={formatMetric(now.n, "num")} delta={change(now.n, before.n)} hint={`${lyHint}: ${formatMetric(before.n, "num")}`} />
             <StatTile label={`Incasso ${monthLabel(current)}`} value={formatMetric(now.revenue, "eur")} delta={change(now.revenue, before.revenue)} hint={`${lyHint}: ${formatMetric(before.revenue, "eur")}`} />
-            <StatTile label="Il più venduto · 12 mesi" value={best?.name ?? "—"} delta={best ? change(best.n_year, best.n_year_ly) : undefined} hint={best ? `${formatMetric(best.n_year, "num")} venduti, vs 12 mesi prima` : undefined} />
-            <StatTile label="Il meno venduto · 12 mesi" value={worst?.name ?? "—"} delta={worst ? change(worst.n_year, worst.n_year_ly) : undefined} hint={worst ? `${formatMetric(worst.n_year, "num")} venduti, vs 12 mesi prima` : undefined} />
+            <StatTile label="Il più venduto · 12 mesi" value={best?.name ?? "—"} delta={best ? yearChange(best.n_year, best.n_year_ly) : undefined} hint={best ? `${formatMetric(best.n_year, "num")} venduti${yearComparable ? ", vs 12 mesi prima" : ""}` : undefined} />
+            <StatTile label="Il meno venduto · 12 mesi" value={worst?.name ?? "—"} delta={worst ? yearChange(worst.n_year, worst.n_year_ly) : undefined} hint={worst ? `${formatMetric(worst.n_year, "num")} venduti${yearComparable ? ", vs 12 mesi prima" : ""}` : undefined} />
           </div>
 
           <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
@@ -128,7 +131,7 @@ export default async function SubscriptionsPage() {
                       <td className="text-right font-medium">{formatMetric(p.n_year, "num")}</td>
                       <td className="text-right text-ink-2">{yearTotal ? `${Math.round((p.n_year / yearTotal) * 100)}%` : "—"}</td>
                       <td className="text-right">{formatMetric(p.rev_year, "eur")}</td>
-                      <td className="text-right" title={`12 mesi prima: ${formatMetric(p.rev_year_ly, "eur")}`}><Delta value={change(p.rev_year, p.rev_year_ly)} /></td>
+                      <td className="text-right" title={`12 mesi prima: ${formatMetric(p.rev_year_ly, "eur")}`}><Delta value={yearChange(p.rev_year, p.rev_year_ly)} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -148,7 +151,7 @@ export default async function SubscriptionsPage() {
                   const ly = m === current ? before : sum(sameMonthLastYear(m));
                   return (
                     <tr key={m}>
-                      <td className="capitalize">{monthLabel(m)}{m === current && <span className="ml-2 text-xs text-ink-3">in corso, vs stessi giorni</span>}</td>
+                      <td className="capitalize">{monthLabel(m)}{m === current && <span className="ml-2 text-xs normal-case text-ink-3">in corso, vs stessi giorni</span>}</td>
                       <td className="text-right">{formatMetric(t.n, "num")}</td>
                       <td className="text-right"><Delta value={change(t.n, ly.n)} /></td>
                       <td className="text-right">{formatMetric(t.revenue, "eur")}</td>

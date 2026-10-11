@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/activities";
 import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
+import { localDay } from "@/lib/dates";
 
 export async function completeTask(form: FormData) {
   const user = await requireUser();
@@ -19,7 +20,8 @@ export async function completeTask(form: FormData) {
       completedBy: status === "aperta" ? null : user.name,
       completedAt: status === "aperta" ? null : new Date(),
     })
-    .where(eq(schema.tasks.id, id))
+    // Solo le task di oggi si spuntano: quelle dei giorni passati restano com'erano a fine giornata.
+    .where(and(eq(schema.tasks.id, id), eq(schema.tasks.day, localDay())))
     .returning();
   // Ogni spunta finisce nel registro attività del giorno, con l'esito scritto.
   // Riaprirla toglie la spunta dal registro, così il resoconto conta solo il lavoro rimasto fatto.

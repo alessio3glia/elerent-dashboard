@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { TaskCard } from "@/components/task-card";
 import { Empty, PageHeader } from "@/components/ui";
 import { localDay } from "@/lib/dates";
@@ -12,8 +13,13 @@ export default async function TasksPage() {
     <>
       <PageHeader
         title="Task di oggi"
-        subtitle={`${open.length} da fare · ${done.length} completate. Generate ogni mattina dai dati di ieri; le task aperte restano in lista per 7 giorni.`}
-      />
+        subtitle={`${open.length} da fare · ${done.length} completate. Generate ogni mattina dai dati di ieri: quelle non fatte entro sera finiscono in Task non svolte.`}
+      >
+        <div className="flex gap-2">
+          <Link href="/task/storico" className="btn-secondary">Task non svolte</Link>
+          <Link href="/task/storico?stato=svolte" className="btn-secondary">Task svolte</Link>
+        </div>
+      </PageHeader>
       <div className="space-y-3">
         {open.map(({ task, city }) => <TaskCard key={task.id} task={task} city={city} today={today} />)}
         {open.length === 0 && <Empty>Nessuna task aperta.</Empty>}

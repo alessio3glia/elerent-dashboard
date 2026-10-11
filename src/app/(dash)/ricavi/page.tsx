@@ -141,7 +141,6 @@ export default async function RevenuePage({ searchParams }: PageProps<"/ricavi">
               <th>Mese</th>
               <th className="text-right">Corse</th>
               <th className="text-right">Fatturato</th>
-              <th className="text-right">Quota %</th>
               <th className="text-right">vs anno prima</th>
               <th className="text-right">Quota %</th>
               <th className="text-right">Mezzi paganti</th>
@@ -158,7 +157,7 @@ export default async function RevenuePage({ searchParams }: PageProps<"/ricavi">
               const ly = lastYear(m);
               return (
                 <tr key={m}>
-                  <td className="capitalize">{monthLabel(m)}{m === current && <span className="ml-2 text-xs text-ink-3">in corso, vs stessi giorni</span>}</td>
+                  <td className="capitalize">{monthLabel(m)}{m === current && <span className="ml-2 text-xs normal-case text-ink-3">in corso, vs stessi giorni</span>}</td>
                   <td className="text-right">{formatMetric(t.rides, "num")}</td>
                   <td className="text-right">{formatMetric(t.revenue, "eur")}</td>
                   <td className="text-right"><Delta value={change(t.revenue, ly.revenue)} /></td>
