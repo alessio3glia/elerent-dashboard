@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useState } from "react";
 import { saveDashboardUpdate } from "@/app/actions/dashboard-updates";
+import { Dictation } from "@/components/dictation";
 import { UPDATE_KINDS, interpretUpdate, type UpdateKind } from "@/lib/dashboard-updates-rules";
 
 type City = { id: number; name: string; active: boolean };
@@ -38,16 +39,18 @@ export function UpdateForm({ cities, today }: { cities: City[]; today: string })
   return (
     <form action={action} className="space-y-4">
       <label className="block">
-        <span className="mb-1 block text-xs text-ink-3">Cosa è cambiato? Scrivilo come lo diresti a un collega.</span>
+        <span className="mb-1 block text-xs text-ink-3">Cosa è cambiato? Scrivilo o dettalo a voce, come lo diresti a un collega.</span>
         <textarea
           name="text"
           value={text}
           onChange={(e) => read(e.target.value)}
-          rows={3}
+          rows={5}
+          maxLength={5000}
           className="input"
           placeholder="Es. Ardea non è più operativa, abbiamo ritirato i mezzi. Oppure: Messina sospesa fino al 15/11 per maltempo."
         />
       </label>
+      <Dictation value={text} onChange={read} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="block">
           <span className="mb-1 block text-xs text-ink-3">Tipo</span>

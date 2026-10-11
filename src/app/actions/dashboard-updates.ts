@@ -12,7 +12,7 @@ const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2
 /** Salva un aggiornamento: vale subito per tutta la dashboard e finisce nel registro attività. */
 export async function saveDashboardUpdate(_prev: { error?: string; ok?: boolean } | undefined, form: FormData) {
   const user = await requireUser();
-  const text = String(form.get("text") ?? "").trim().slice(0, 1000);
+  const text = String(form.get("text") ?? "").trim().slice(0, 5000);
   const kind = form.get("kind");
   const cityId = Number(form.get("cityId")) || null;
   const startsOn = isDay(form.get("startsOn")) ? String(form.get("startsOn")) : localDay();
