@@ -1,9 +1,12 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatMetric } from "@/lib/metrics/catalog";
 
-type Row = { month: string; share: number; fee: number; vehicles: number };
+/** `prev` è il ricavo Elerent dello stesso mese dell'anno prima (linea tratteggiata). */
+type Row = { month: string; share: number; fee: number; vehicles: number; prev?: number | null };
+
+const NAMES: Record<string, string> = { share: "Quota sul fatturato", fee: "Fee mezzi", prev: "Anno prima" };
 
 const label = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString("it-IT", { month: "short", year: "2-digit" });
 
@@ -13,7 +16,7 @@ export function MonthBars({ data, height = 280 }: { data: Row[]; height?: number
   return (
     <div style={{ height }} role="img" aria-label="Ricavo Elerent per mese">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis dataKey="month" tickFormatter={label} tick={{ fill: "var(--ink-3)", fontSize: 12 }} axisLine={false} tickLine={false} />
           <YAxis tickFormatter={(v: number) => formatMetric(v, "eur")} tick={{ fill: "var(--ink-3)", fontSize: 12 }} axisLine={false} tickLine={false} width={72} />
@@ -25,12 +28,13 @@ export function MonthBars({ data, height = 280 }: { data: Row[]; height?: number
               const name = new Date(`${m}-15T12:00:00Z`).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
               return row ? `${name} · ${row.vehicles} mezzi paganti` : name;
             }}
-            formatter={(v, name) => [formatMetric(v as number, "eur"), name === "share" ? "Quota sul fatturato" : "Fee mezzi"]}
+            formatter={(v, name) => [formatMetric(v as number, "eur"), NAMES[String(name)] ?? String(name)]}
           />
-          <Legend formatter={(v) => (v === "share" ? "Quota sul fatturato" : "Fee mezzi")} wrapperStyle={{ fontSize: 12, color: "var(--ink-2)" }} />
+          <Legend formatter={(v) => NAMES[String(v)] ?? v} wrapperStyle={{ fontSize: 12, color: "var(--ink-2)" }} />
           <Bar dataKey="share" stackId="a" fill="var(--brand)" radius={[0, 0, 0, 0]} />
           <Bar dataKey="fee" stackId="a" fill="#a6f5c8" radius={[4, 4, 0, 0]} />
-        </BarChart>
+          {data.some((r) => r.prev) && <Line type="monotone" dataKey="prev" stroke="var(--ink-3)" strokeWidth={1.5} strokeDasharray="4 4" dot={{ r: 2.5, fill: "var(--ink-3)" }} connectNulls />}
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

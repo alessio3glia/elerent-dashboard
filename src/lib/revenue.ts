@@ -29,3 +29,13 @@ export async function unpaidDebt() {
     from customers`);
   return row ?? { users: 0, debt: 0 };
 }
+
+/** Abbonamenti venduti per città tra due giorni locali inclusi (per il confronto con gli stessi giorni dell'anno prima). */
+export async function subscriptionsBetween(from: string, to: string) {
+  return db.execute<{ city_id: number | null; n: number; revenue: number }>(sql`
+    select city_id, count(*)::int as n, coalesce(sum(price), 0)::float as revenue
+    from subscriptions
+    where purchased_at >= (${from}::date::timestamp at time zone ${TZ})
+      and purchased_at < ((${to}::date + 1)::timestamp at time zone ${TZ})
+    group by 1`);
+}

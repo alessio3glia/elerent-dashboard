@@ -43,7 +43,7 @@ export function StatTile({ label, value, delta, higherIsBetter, hint }: { label:
   return (
     <div className="rounded-xl border border-line bg-surface p-5">
       <div className="text-sm text-ink-2">{label}</div>
-      <div className="tabular mt-2 text-3xl font-semibold tracking-tight">{value}</div>
+      <div className="tabular mt-2 break-words text-3xl font-semibold tracking-tight">{value}</div>
       <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
         {delta !== undefined && <Delta value={delta} higherIsBetter={higherIsBetter} />}
         {hint && <span>{hint}</span>}
