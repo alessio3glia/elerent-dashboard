@@ -39,12 +39,12 @@ export function Delta({ value, higherIsBetter = true }: { value: number | null; 
   );
 }
 
-export function StatTile({ label, value, delta, higherIsBetter, hint }: { label: string; value: string; delta?: number | null; higherIsBetter?: boolean; hint?: string }) {
+export function StatTile({ label, value, delta, higherIsBetter, hint, accent }: { label: string; value: string; delta?: number | null; higherIsBetter?: boolean; hint?: string; accent?: boolean }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-5">
+    <div className={`rounded-xl border p-5 ${accent ? "border-brand/40 bg-gradient-to-br from-brand-soft to-surface" : "border-line bg-surface"}`}>
       <div className="text-sm text-ink-2">{label}</div>
-      <div className="tabular mt-2 break-words text-3xl font-semibold tracking-tight">{value}</div>
-      <div className="mt-2 flex items-center gap-2 text-xs text-ink-3">
+      <div className={`tabular mt-2 break-words text-3xl font-semibold tracking-tight ${accent ? "text-brand" : ""}`}>{value}</div>
+      <div className="mt-2 flex flex-col items-start gap-1 text-xs text-ink-3">
         {delta !== undefined && <Delta value={delta} higherIsBetter={higherIsBetter} />}
         {hint && <span>{hint}</span>}
       </div>

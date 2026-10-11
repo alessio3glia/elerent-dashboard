@@ -10,17 +10,37 @@ import { LiveMapLoader } from "@/components/live-map-loader";
 import { liveVehicles, recentRideEnds } from "@/lib/fleet-status";
 import { subscriptionsMonthToDate } from "@/lib/subscriptions-queries";
 import { getLiveState, todayByCity, todaySubscriptionsByCity } from "@/lib/live";
-import { addDays, formatDay, localDay } from "@/lib/dates";
+import { addDays, formatDay, localDay, sameWeekdayLastYear } from "@/lib/dates";
+import { subscriptionsBetween } from "@/lib/revenue";
+import { ridesSoFarOn } from "@/lib/yoy";
 import { METRICS, formatMetric } from "@/lib/metrics/catalog";
 import { inRange, sumByDay } from "@/lib/metrics/aggregate";
 import { lastMetricDay, lastSync, listCities, metricsBetween, recentAlerts, tasksForDay } from "@/lib/queries";
 
 const metric = (key: string) => METRICS.find((m) => m.key === key)!;
 const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b) / b : null);
+const formatDelta = (d: number | null) => (d === null ? "—" : `${d > 0 ? "+" : ""}${Math.round(d * 100)}%`);
+
+/** Un numero del riquadro "Oggi": valore grande, confronto con l'anno prima alla stessa ora. */
+function LiveFigure({ label, value, delta, ly, week, sub }: { label: string; value: string; delta?: number | null; ly?: string; week?: number | null; sub?: string }) {
+  return (
+    <div className="rounded-lg bg-surface-2 p-4">
+      <div className="text-xs text-ink-3">{label}</div>
+      <div className="tabular mt-1 text-3xl font-semibold tracking-tight">{value}</div>
+      {delta !== undefined && (
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-3"><Delta value={delta} /> anno prima, stessa ora: {ly}</div>
+      )}
+      {week !== undefined && <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3"><Delta value={week} /> vs settimana scorsa</div>}
+      {sub && <div className="tabular mt-1 text-xs text-ink-3">{sub}</div>}
+    </div>
+  );
+}
 
 export default async function OverviewPage() {
   const last = await lastMetricDay();
-  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh, notes] = await Promise.all([
+  const todayDay = localDay();
+  const lyMonth = `${Number(todayDay.slice(0, 4)) - 1}${todayDay.slice(4, 7)}`;
+  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh, notes, lyRows, lyToday, lySubs] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
@@ -36,7 +56,12 @@ export default async function OverviewPage() {
     hourlyToday(),
     freshness(),
     currentNotes(),
+    // Anno prima: stesse settimane (allineate al giorno della settimana), oggi fino alla stessa ora, abbonamenti negli stessi giorni del mese.
+    metricsBetween(sameWeekdayLastYear(addDays(last, -59)), sameWeekdayLastYear(last)),
+    ridesSoFarOn(sameWeekdayLastYear(todayDay)),
+    subscriptionsBetween(`${lyMonth}-01`, `${lyMonth}-${todayDay.slice(8)}`),
   ]);
+  const pctById = (id: number) => cities.find((c) => c.id === id)?.revenueSharePct;
   const health = await cityHealth(cities.filter((c) => c.active).map((c) => c.id));
   const healthOrder: Record<Health, number> = { rosso: 0, giallo: 1, verde: 2 };
   const healthRows = health
@@ -68,6 +93,10 @@ export default async function OverviewPage() {
   const network = sumByDay(rows);
   const cur30 = inRange(network, addDays(last, -29), last);
   const prev30 = inRange(network, addDays(last, -59), addDays(last, -30));
+  const lyNetwork = sumByDay(lyRows);
+  const ly30 = inRange(lyNetwork, sameWeekdayLastYear(addDays(last, -29)), sameWeekdayLastYear(last));
+  const lyTodayTotal = lyToday.reduce((a, r) => ({ rides: a.rides + r.rides, revenue: a.revenue + r.revenue, vehicles: a.vehicles + r.vehicles }), { rides: 0, revenue: 0, vehicles: 0 });
+  const lySubsMonth = lySubs.reduce((a, r) => ({ n: a.n + r.n, revenue: a.revenue + r.revenue }), { n: 0, revenue: 0 });
 
   // Ricavo Elerent del mese (quota sul fatturato + fee dei mezzi alla prima corsa del mese) contro gli stessi giorni del mese prima.
   const monthStart = `${last.slice(0, 7)}-01`;
@@ -76,16 +105,22 @@ export default async function OverviewPage() {
   const sumElerent = (from: string, to: string) => inRange(network, from, to).reduce((a, d) => a + (d.elerentRevenue ?? 0), 0);
   const elerentMonth = sumElerent(monthStart, last);
   const elerentPrev = sumElerent(prevMonthStart, prevSameDay < monthStart ? prevSameDay : addDays(monthStart, -1));
-  const pctById = new Map(cities.map((c) => [c.id, c.revenueSharePct]));
+  // Stessi giorni del mese, un anno fa (date di calendario: la fee si conta per mese).
+  const lyMonthStart = `${Number(monthStart.slice(0, 4)) - 1}${monthStart.slice(4)}`;
+  const elerentLy = inRange(lyNetwork, lyMonthStart, `${Number(last.slice(0, 4)) - 1}${last.slice(4)}`).reduce((a, d) => a + (d.elerentRevenue ?? 0), 0);
+  const lyShareByDay = new Map<string, number>();
+  for (const r of lyRows) lyShareByDay.set(r.day, (lyShareByDay.get(r.day) ?? 0) + ((r.revenue ?? 0) * (pctById(r.cityId) ?? 10)) / 100);
   const shareByDay = new Map<string, number>();
-  for (const r of rows) shareByDay.set(r.day, (shareByDay.get(r.day) ?? 0) + ((r.revenue ?? 0) * (pctById.get(r.cityId) ?? 10)) / 100);
+  for (const r of rows) shareByDay.set(r.day, (shareByDay.get(r.day) ?? 0) + ((r.revenue ?? 0) * (pctById(r.cityId) ?? 10)) / 100);
   const tiles = ["revenue", "rides", "ridesPerVehicle"].map((key) => {
     const m = metric(key);
     const a = m.total(cur30);
-    return { m, value: formatMetric(a, m.format), delta: change(a, m.total(prev30)) };
+    const ly = ly30.length ? m.total(ly30) : null;
+    return { m, value: formatMetric(a, m.format), delta: change(a, ly), hint: `vs anno prima${ly !== null ? ` (${formatMetric(ly, m.format)})` : ""} · 30 gg prima ${formatDelta(change(a, m.total(prev30)))}` };
   });
   const lastDay = network.at(-1);
   const prevWeekVehicles = metric("activeVehicles").total(inRange(network, addDays(last, -7), addDays(last, -1)));
+  const lyVehicles = lyNetwork.find((d) => d.day === sameWeekdayLastYear(last))?.activeVehicles ?? null;
 
   const cityRows = cities
     .filter((c) => c.active)
@@ -93,6 +128,7 @@ export default async function OverviewPage() {
       const mine = rows.filter((r) => r.cityId === c.id);
       const w = inRange(mine, addDays(last, -6), last);
       const pw = inRange(mine, addDays(last, -13), addDays(last, -7));
+      const lyw = inRange(sumByDay(lyRows.filter((r) => r.cityId === c.id)), sameWeekdayLastYear(addDays(last, -6)), sameWeekdayLastYear(last));
       const rev = metric("revenue").total(w) ?? 0;
       return {
         city: c,
@@ -100,6 +136,8 @@ export default async function OverviewPage() {
         rides: metric("rides").total(w) ?? 0,
         revenue: rev,
         delta: change(rev, metric("revenue").total(pw)),
+        deltaLy: lyw.length ? change(rev, metric("revenue").total(lyw)) : null,
+        ridesLy: lyw.length ? change(metric("rides").total(w), metric("rides").total(lyw)) : null,
         elerent: (rev * c.revenueSharePct) / 100,
         rpv: metric("ridesPerVehicle").total(w),
         alerts: alerts.filter((a) => a.city.id === c.id).length,
@@ -132,7 +170,7 @@ export default async function OverviewPage() {
         title="Panoramica rete"
         subtitle={
           <>
-            Dati fino al {formatDay(last)} · ultimi 30 giorni contro i 30 precedenti
+            Dati fino al {formatDay(last)} · ogni numero è confrontato con lo stesso periodo dell&apos;anno prima
             {sync && ` · ultima sincronizzazione ${sync.startedAt.toLocaleString("it-IT", { timeZone: "Europe/Rome" })}${sync.ok === false ? " (fallita)" : ""}`}
           </>
         }
@@ -140,6 +178,7 @@ export default async function OverviewPage() {
         <Freshness data={fresh} />
       </PageHeader>
 
+      <AutoRefresh seconds={60} />
       <AutoRefresh seconds={60} />
       {notes.length > 0 && (
         <div className="mb-6 rounded-xl border border-line bg-surface px-4 py-3">
@@ -169,175 +208,136 @@ export default async function OverviewPage() {
           <span className="text-xs text-ink-3">
             {live ? `aggiornato alle ${time(live.at)}` : "in attesa della prima sincronizzazione"}
             {lastRide && ` · ultima corsa ${time(lastRide)}`}
-            {live?.error && <span className="text-critical"> · errore Atom: {live.error}</span>}
           </span>
         }
         className="mb-6"
       >
-        <div className="flex flex-wrap gap-x-10 gap-y-3">
-          <div>
-            <div className="text-xs text-ink-3">Corse</div>
-            <div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.rides, "num")}</div>
-            <div className="flex items-center gap-1.5 text-xs text-ink-3">
-              <Delta value={paceDelta(paceTotal.today, paceTotal.week1)} /> vs settimana scorsa alla stessa ora
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <LiveFigure label="Corse" value={formatMetric(todayTotal.rides, "num")} delta={change(todayTotal.rides, lyTodayTotal.rides)} ly={formatMetric(lyTodayTotal.rides, "num")} week={paceDelta(paceTotal.today, paceTotal.week1)} />
+          <LiveFigure label="Fatturato" value={formatMetric(todayTotal.revenue, "eur")} delta={change(todayTotal.revenue, lyTodayTotal.revenue)} ly={formatMetric(lyTodayTotal.revenue, "eur")} />
+          <LiveFigure label="Veicoli usati" value={formatMetric(todayTotal.vehicles, "num")} delta={change(todayTotal.vehicles, lyTodayTotal.vehicles)} ly={formatMetric(lyTodayTotal.vehicles, "num")} />
+          <LiveFigure label="Abbonamenti venduti" value={formatMetric(subsToday.n, "num")} sub={formatMetric(subsToday.revenue, "eur")} />
+        </div>
+        {todayRows.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {todayRows.slice(0, 12).map((r) => {
+              const p = pace.find((x) => x.city_id === r.city.id);
+              const d = p ? paceDelta(p.today, p.week1) : null;
+              return (
+                <Link key={r.city.id} href={`/citta/${r.city.slug}`} className="rounded-full border border-line px-3 py-1 text-xs hover:border-brand hover:text-brand">
+                  {r.city.name} <span className="tabular text-ink-2">{r.rides} corse · {formatMetric(r.revenue, "eur")}</span>
+                  {d !== null && <span className={`tabular ml-1.5 ${d >= 0 ? "text-brand" : "text-critical"}`}>{d >= 0 ? "+" : ""}{Math.round(d * 100)}%</span>}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+      <div className="mb-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
+        <Card
+          title="Mappa live della flotta"
+          action={
+            <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#39ff8f] shadow-[0_0_6px_#39ff8f]" />In corsa {counts.corsa}</span>
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand" />Operativi {counts.operativo}</span>
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#5a5a5a]" />Senza segnale {counts.spento}</span>
+              <span>{mapRides.length} corse finite negli ultimi 30 min</span>
+            </span>
+          }
+          className="xl:col-span-2"
+        >
+          <LiveMapLoader vehicles={mapVehicles} rides={mapRides} />
+        </Card>
+        <div className="grid gap-6">
+          <Card
+            title={`Abbonamenti di ${new Date().toLocaleDateString("it-IT", { month: "long", timeZone: "Europe/Rome" })}`}
+            action={<Link href="/abbonamenti" className="text-xs text-brand hover:underline">Dettaglio</Link>}
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-surface-2 p-3">
+                <div className="text-xs text-ink-3">Venduti</div>
+                <div className="tabular text-2xl font-semibold">{formatMetric(subsMonth.n, "num")}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-3"><Delta value={change(subsMonth.n, lySubsMonth.n)} /> anno prima {lySubsMonth.n}</div>
+              </div>
+              <div className="rounded-lg bg-surface-2 p-3">
+                <div className="text-xs text-ink-3">Incasso</div>
+                <div className="tabular text-2xl font-semibold">{formatMetric(subsMonth.revenue, "eur")}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-3"><Delta value={change(subsMonth.revenue, lySubsMonth.revenue)} /> anno prima {formatMetric(lySubsMonth.revenue, "eur")}</div>
+              </div>
             </div>
-          </div>
-          <div><div className="text-xs text-ink-3">Fatturato</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.revenue, "eur")}</div></div>
-          <div><div className="text-xs text-ink-3">Veicoli usati</div><div className="tabular text-3xl font-semibold">{formatMetric(todayTotal.vehicles, "num")}</div></div>
-          <div>
-            <div className="text-xs text-ink-3">Abbonamenti venduti</div>
-            <div className="tabular text-3xl font-semibold">{formatMetric(subsToday.n, "num")}</div>
-            {subsToday.revenue > 0 && <div className="tabular text-xs text-ink-3">{formatMetric(subsToday.revenue, "eur")}</div>}
-          </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
-            {todayRows.slice(0, 12).map((r) => (
-              <Link key={r.city.id} href={`/citta/${r.city.slug}`} className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs hover:text-brand">
-                {r.city.name} <span className="tabular text-ink-2">{r.rides} corse · {formatMetric(r.revenue, "eur")}</span>
-                {(() => {
-                  const p = pace.find((x) => x.city_id === r.city.id);
-                  const d = p ? paceDelta(p.today, p.week1) : null;
-                  return d === null ? null : <span className={`tabular ml-1.5 ${d >= 0 ? "text-brand" : "text-critical"}`}>{d >= 0 ? "+" : ""}{Math.round(d * 100)}%</span>;
-                })()}
-              </Link>
-            ))}
-          </div>
+            <ul className="mt-3 space-y-1.5 text-sm">
+              {subsCities.slice(0, 5).map((r) => (
+                <li key={r.city_id ?? "none"} className="flex justify-between gap-2">
+                  <span className="text-ink-2">{r.city?.name ?? "Altre"}</span>
+                  <span className="tabular">{r.n} · {formatMetric(r.revenue, "eur")}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-ink-3">Confronto con gli stessi giorni del mese, un anno fa. Oggi: {formatMetric(subsToday.n, "num")} venduti, {formatMetric(subsToday.revenue, "eur")}.</p>
+          </Card>
+          <Card
+            title={`Task di oggi · ${openTasks.length} aperte`}
+            action={<Link href="/task" className="text-xs text-brand hover:underline">Apri tutte</Link>}
+          >
+            <ul className="space-y-3">
+              {openTasks.slice(0, 4).map(({ task, city }) => (
+                <li key={task.id} className="rounded-lg bg-surface-2 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs text-ink-3">
+                    <PriorityBadge priority={task.priority} /> {city.name}
+                  </div>
+                  <div className="text-sm">{task.title}</div>
+                </li>
+              ))}
+              {openTasks.length === 0 && <p className="text-sm text-ink-3">Nessuna task aperta. Ottimo lavoro.</p>}
+            </ul>
+          </Card>
         </div>
-      </Card>
-
-      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card title="Semaforo città, adesso" action={<Link href="/heatmap" className="text-xs text-brand hover:underline">Heatmap</Link>} className="xl:col-span-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {healthRows.map((h) => (
-              <Link key={h.cityId} href={`/heatmap?citta=${h.city.slug}`} className="flex items-start gap-3 rounded-lg bg-surface-2 px-3 py-2 hover:ring-1 hover:ring-line">
-                <span
-                  className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${h.health === "rosso" ? "bg-critical" : h.health === "giallo" ? "bg-warning" : "bg-brand"}`}
-                  aria-label={h.health}
-                />
-                <span className="min-w-0 text-sm">
-                  <span className="font-medium">{h.city.name}</span>
-                  <span className="tabular ml-2 text-xs text-ink-3">
-                    {h.today} corse{h.pace !== null && ` (${h.pace >= 0 ? "+" : ""}${Math.round(h.pace * 100)}%)`} · {h.signalling}/{h.vehicles} mezzi con segnale
-                  </span>
-                  <span className={`block text-xs ${h.health === "rosso" ? "text-critical" : h.health === "giallo" ? "text-warning" : "text-ink-3"}`}>
-                    {h.reasons.length ? h.reasons.join(" · ") : "tutto nella norma"}
-                  </span>
-                  {notes.filter((n) => n.update.cityId === h.cityId).map((n) => (
-                    <span key={n.update.id} className="block text-xs text-info">Nota: {n.update.text}</span>
-                  ))}
-                </span>
-              </Link>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-ink-3">
-            Ritmo contro la media degli stessi giorni delle ultime 4 settimane alla stessa ora. Rosso: corse giù del 40% o più, nessuna corsa dopo le 11,
-            meno di metà mezzi con segnale o oltre il 40% con batteria sotto il 20%. Giallo: soglie al 20%, 75% e 20%.
-          </p>
-        </Card>
-        <Card title="Ritmo di oggi, tutta la rete">
-          <PaceChart data={hourly} />
-        </Card>
       </div>
-
-      <Card
-        title={`Abbonamenti di ${new Date().toLocaleDateString("it-IT", { month: "long", timeZone: "Europe/Rome" })}`}
-        action={<Link href="/abbonamenti" className="text-xs text-brand hover:underline">Dettaglio</Link>}
-        className="mb-6"
-      >
-        <div className="flex flex-wrap gap-x-10 gap-y-3">
-          <div>
-            <div className="text-xs text-ink-3">Venduti nel mese</div>
-            <div className="tabular text-3xl font-semibold">{formatMetric(subsMonth.n, "num")}</div>
-            <Delta value={change(subsMonth.n, subsMonth.prevN)} />
-          </div>
-          <div>
-            <div className="text-xs text-ink-3">Incasso nel mese</div>
-            <div className="tabular text-3xl font-semibold">{formatMetric(subsMonth.revenue, "eur")}</div>
-            <Delta value={change(subsMonth.revenue, subsMonth.prevRevenue)} />
-          </div>
-          <div>
-            <div className="text-xs text-ink-3">Oggi</div>
-            <div className="tabular text-3xl font-semibold">{formatMetric(subsToday.revenue, "eur")}</div>
-            <div className="tabular text-xs text-ink-3">{formatMetric(subsToday.n, "num")} venduti</div>
-          </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
-            {subsCities.slice(0, 10).map((r) => (
-              <span key={r.city_id ?? "none"} className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs">
-                {r.city?.name ?? "Altre"} <span className="tabular text-ink-2">{r.n} · {formatMetric(r.revenue, "eur")}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-ink-3">Variazioni rispetto agli stessi giorni del mese scorso.</p>
-      </Card>
-
-      <Card
-        title="Mappa live della flotta"
-        action={
-          <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
-            <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#39ff8f] shadow-[0_0_6px_#39ff8f]" />In corsa {counts.corsa}</span>
-            <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand" />Operativi {counts.operativo}</span>
-            <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#5a5a5a]" />Senza segnale {counts.spento}</span>
-            <span>{mapRides.length} corse finite negli ultimi 30 min</span>
-          </span>
-        }
-        className="mb-6"
-      >
-        <LiveMapLoader vehicles={mapVehicles} rides={mapRides} />
-      </Card>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile
           label={`Ricavo Elerent · ${new Date(`${last}T12:00:00Z`).toLocaleDateString("it-IT", { month: "long" })}`}
           value={formatMetric(elerentMonth, "eur")}
-          delta={change(elerentMonth, elerentPrev)}
-          hint="quota + fee mezzi, vs stessi giorni mese prima"
+          delta={change(elerentMonth, elerentLy)}
+          hint={`vs anno prima (${formatMetric(elerentLy, "eur")}) · mese prima ${formatDelta(change(elerentMonth, elerentPrev))}`}
+          accent
         />
-        {tiles.map(({ m, value, delta }) => (
-          <StatTile key={m.key} label={`${m.label} · 30 gg`} value={value} delta={delta} higherIsBetter={m.higherIsBetter} />
+        {tiles.map(({ m, value, delta, hint }) => (
+          <StatTile key={m.key} label={`${m.label} · 30 gg`} value={value} delta={delta} higherIsBetter={m.higherIsBetter} hint={hint} />
         ))}
         <StatTile
           label="Veicoli in strada"
           value={formatMetric(lastDay?.activeVehicles ?? 0, "num")}
-          delta={change(lastDay?.activeVehicles ?? null, prevWeekVehicles)}
-          hint={lastDay?.estimated ? "stimato dalle corse" : "vs media 7 gg"}
+          delta={change(lastDay?.activeVehicles ?? null, lyVehicles)}
+          hint={`vs anno prima${lyVehicles !== null ? ` (${formatMetric(lyVehicles, "num")})` : ""} · media 7 gg ${formatDelta(change(lastDay?.activeVehicles ?? null, prevWeekVehicles))}${lastDay?.estimated ? " · stimato" : ""}`}
         />
       </div>
-
       <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
         <Card
-          title="Quota Elerent sul fatturato · giorno per giorno, 60 giorni"
+          title="Quota Elerent sul fatturato · 60 giorni, tratteggiato l'anno prima"
           action={<Link href="/ricavi" className="text-xs text-brand hover:underline">Ricavi mese per mese</Link>}
           className="xl:col-span-2"
         >
-          <TrendChart label="Quota sul fatturato" format="eur" data={network.map((d) => ({ day: d.day, value: Math.round((shareByDay.get(d.day) ?? 0) * 100) / 100 }))} />
+          <TrendChart label="Quota sul fatturato" format="eur" data={network.map((d) => {
+              const ly = lyShareByDay.get(sameWeekdayLastYear(d.day));
+              return { day: d.day, value: Math.round((shareByDay.get(d.day) ?? 0) * 100) / 100, prev: ly === undefined ? null : Math.round(ly * 100) / 100 };
+            })} />
         </Card>
-        <Card
-          title={`Task di oggi · ${openTasks.length} aperte`}
-          action={<Link href="/task" className="text-xs text-brand hover:underline">Apri tutte</Link>}
-        >
-          <ul className="space-y-3">
-            {openTasks.slice(0, 6).map(({ task, city }) => (
-              <li key={task.id} className="rounded-lg bg-surface-2 p-3">
-                <div className="mb-1 flex items-center gap-2 text-xs text-ink-3">
-                  <PriorityBadge priority={task.priority} /> {city.name}
-                </div>
-                <div className="text-sm">{task.title}</div>
-              </li>
-            ))}
-            {openTasks.length === 0 && <p className="text-sm text-ink-3">Nessuna task aperta. Ottimo lavoro.</p>}
-          </ul>
+        <Card title="Ritmo di oggi, ora per ora">
+          <PaceChart data={hourly} />
         </Card>
       </div>
 
-      <Card title="Città · ultimi 7 giorni, dalla peggiore" className="mt-6 overflow-x-auto">
+      <Card title="Città · ultimi 7 giorni, dalla peggiore (anno prima: stesse settimane)" className="mt-6 overflow-x-auto">
         <table className="table tabular">
           <thead>
             <tr>
               <th>Città</th>
               <th className="text-right">In strada</th>
               <th className="text-right">Corse</th>
+              <th className="text-right">vs anno prima</th>
               <th className="text-right">Corse/veicolo</th>
               <th className="text-right">Fatturato</th>
+              <th className="text-right">vs anno prima</th>
               <th className="text-right">vs sett. prima</th>
               <th className="text-right">Quota Elerent</th>
               <th className="text-right">Alert oggi</th>
@@ -352,8 +352,10 @@ export default async function OverviewPage() {
                 </td>
                 <td className="text-right">{formatMetric(r.vehicles, "num")}</td>
                 <td className="text-right">{formatMetric(r.rides, "num")}</td>
+                <td className="text-right"><Delta value={r.ridesLy} /></td>
                 <td className="text-right">{formatMetric(r.rpv, "num1")}</td>
                 <td className="text-right">{formatMetric(r.revenue, "eur")}</td>
+                <td className="text-right"><Delta value={r.deltaLy} /></td>
                 <td className="text-right"><Delta value={r.delta} /></td>
                 <td className="text-right">{formatMetric(r.elerent, "eur")}</td>
                 <td className="text-right">
@@ -368,6 +370,35 @@ export default async function OverviewPage() {
             Nessuna città configurata. Aggiungile da <Link href="/impostazioni" className="text-brand">Impostazioni</Link>.
           </p>
         )}
+      </Card>
+
+      <Card title="Semaforo città, adesso" action={<Link href="/heatmap" className="text-xs text-brand hover:underline">Heatmap</Link>} className="mt-6">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {healthRows.map((h) => (
+            <Link key={h.cityId} href={`/heatmap?citta=${h.city.slug}`} className="flex items-start gap-3 rounded-lg bg-surface-2 px-3 py-2 hover:ring-1 hover:ring-line">
+              <span
+                className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${h.health === "rosso" ? "bg-critical" : h.health === "giallo" ? "bg-warning" : "bg-brand"}`}
+                aria-label={h.health}
+              />
+              <span className="min-w-0 text-sm">
+                <span className="font-medium">{h.city.name}</span>
+                <span className="tabular ml-2 text-xs text-ink-3">
+                  {h.today} corse{h.pace !== null && ` (${h.pace >= 0 ? "+" : ""}${Math.round(h.pace * 100)}%)`} · {h.signalling}/{h.vehicles} mezzi con segnale
+                </span>
+                <span className={`block text-xs ${h.health === "rosso" ? "text-critical" : h.health === "giallo" ? "text-warning" : "text-ink-3"}`}>
+                  {h.reasons.length ? h.reasons.join(" · ") : "tutto nella norma"}
+                </span>
+                {notes.filter((n) => n.update.cityId === h.cityId).map((n) => (
+                  <span key={n.update.id} className="block text-xs text-info">Nota: {n.update.text}</span>
+                ))}
+              </span>
+            </Link>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-ink-3">
+          Ritmo contro la media degli stessi giorni delle ultime 4 settimane alla stessa ora. Rosso: corse giù del 40% o più, nessuna corsa dopo le 11,
+          meno di metà mezzi con segnale o oltre il 40% con batteria sotto il 20%. Giallo: soglie al 20%, 75% e 20%.
+        </p>
       </Card>
     </>
   );
