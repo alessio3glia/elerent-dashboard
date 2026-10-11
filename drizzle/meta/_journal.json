@@ -50,6 +50,13 @@
       "when": 1791706924110,
       "tag": "0006_disponibilita_mezzi",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791707549609,
+      "tag": "0007_aggiornamenti_dashboard",
+      "breakpoints": true
     }
   ]
 }

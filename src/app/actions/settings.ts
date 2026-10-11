@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { triggerBackfillStep } from "@/lib/backfill-chain";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/session";
+import { addDashboardUpdate } from "@/lib/dashboard-updates";
 import { db, schema } from "@/lib/db";
 import { localDay } from "@/lib/dates";
 import { recomputeAll } from "@/lib/pipeline";
@@ -34,12 +35,24 @@ const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export async function saveCity(_prev: { error?: string; ok?: boolean } | undefined, form: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = CitySchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: "Controlla i campi: nome, percentuale e fee sono obbligatori." };
   const { id, ...data } = parsed.data;
   if (id) {
+    const [before] = await db.select({ active: schema.cities.active }).from(schema.cities).where(eq(schema.cities.id, Number(id)));
     await db.update(schema.cities).set(data).where(eq(schema.cities.id, Number(id)));
+    // Attivata o disattivata a mano: diventa un aggiornamento, così la regola automatica non la rimette com'era.
+    if (before && before.active !== data.active) {
+      await addDashboardUpdate({
+        user: admin,
+        kind: data.active ? "citta_riaperta" : "citta_chiusa",
+        cityId: Number(id),
+        startsOn: localDay(),
+        endsOn: null,
+        text: data.active ? "Riattivata da Impostazioni" : "Disattivata da Impostazioni",
+      });
+    }
   } else {
     await db.insert(schema.cities).values({ ...data, slug: slugify(data.name) });
   }

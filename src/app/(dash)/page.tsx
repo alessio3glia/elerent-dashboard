@@ -5,6 +5,7 @@ import { TrendChart } from "@/components/trend-chart";
 import { PaceChart } from "@/components/hour-charts";
 import { cityHealth, freshness, hourlyToday, paceByCity, paceDelta, type Health } from "@/lib/realtime";
 import { Freshness } from "./freshness";
+import { currentNotes } from "@/lib/dashboard-updates";
 import { LiveMapLoader } from "@/components/live-map-loader";
 import { liveVehicles, recentRideEnds } from "@/lib/fleet-status";
 import { subscriptionsMonthToDate } from "@/lib/subscriptions-queries";
@@ -19,7 +20,7 @@ const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b
 
 export default async function OverviewPage() {
   const last = await lastMetricDay();
-  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh] = await Promise.all([
+  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh, notes] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
@@ -34,6 +35,7 @@ export default async function OverviewPage() {
     paceByCity(),
     hourlyToday(),
     freshness(),
+    currentNotes(),
   ]);
   const health = await cityHealth(cities.filter((c) => c.active).map((c) => c.id));
   const healthOrder: Record<Health, number> = { rosso: 0, giallo: 1, verde: 2 };
@@ -139,6 +141,23 @@ export default async function OverviewPage() {
       </PageHeader>
 
       <AutoRefresh seconds={60} />
+      {notes.length > 0 && (
+        <div className="mb-6 rounded-xl border border-line bg-surface px-4 py-3">
+          <div className="mb-1 flex items-center justify-between text-xs text-ink-3">
+            <span>Note operative del team</span>
+            <Link href="/aggiornamenti" className="text-brand hover:underline">Aggiornamenti dashboard</Link>
+          </div>
+          <ul className="space-y-1 text-sm">
+            {notes.map(({ update: n, cityName }) => (
+              <li key={n.id}>
+                <span className="font-medium text-brand">{cityName ?? "Tutta la rete"}</span>
+                <span className="text-ink-3">{n.endsOn ? ` · fino al ${formatDay(n.endsOn)}` : ` · dal ${formatDay(n.startsOn)}`}</span>
+                <span className="ml-2">{n.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <Card
         title={
           <>
@@ -202,6 +221,9 @@ export default async function OverviewPage() {
                   <span className={`block text-xs ${h.health === "rosso" ? "text-critical" : h.health === "giallo" ? "text-warning" : "text-ink-3"}`}>
                     {h.reasons.length ? h.reasons.join(" · ") : "tutto nella norma"}
                   </span>
+                  {notes.filter((n) => n.update.cityId === h.cityId).map((n) => (
+                    <span key={n.update.id} className="block text-xs text-info">Nota: {n.update.text}</span>
+                  ))}
                 </span>
               </Link>
             ))}

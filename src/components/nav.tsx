@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/utenti", label: "Utenti" },
   { href: "/abbonamenti", label: "Abbonamenti" },
   { href: "/notifiche", label: "Notifiche" },
+  { href: "/aggiornamenti", label: "Aggiornamenti dashboard" },
 ];
 
 /** Puntino che pulsa sul link cliccato finché la pagina non arriva. */

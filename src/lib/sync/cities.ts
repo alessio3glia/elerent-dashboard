@@ -1,5 +1,6 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
+import { applyCityOverrides } from "@/lib/dashboard-updates";
 import { db, schema } from "@/lib/db";
 import { distanceKm } from "@/lib/geo";
 import { ITALIAN_CITIES } from "@/lib/italian-cities";
@@ -90,16 +91,19 @@ export async function nameCities(slugify: (s: string) => string, deadline = Date
 /**
  * Città operative: si disattivano quelle senza corse negli ultimi 365 giorni e si riattivano da sole
  * appena tornano ad avere corse negli ultimi 30 giorni. Le città disattivate restano nei dati storici.
+ * Le città chiuse, sospese o riaperte a mano da "Aggiornamenti dashboard" seguono quello che ha deciso il dipendente.
  */
 export async function updateCityActivity() {
+  const manual = await applyCityOverrides();
+  const skip = manual.length ? sql`and c.id not in (${sql.join(manual.map((id) => sql`${id}`), sql`, `)})` : sql``;
   const off = await db.execute<{ name: string }>(sql`
     update cities c set active = false
-    where c.active
+    where c.active ${skip}
       and not exists (select 1 from rides r where r.city_id = c.id and r.start_time >= now() - interval '365 days')
     returning c.name`);
   const on = await db.execute<{ name: string }>(sql`
     update cities c set active = true
-    where not c.active
+    where not c.active ${skip}
       and exists (select 1 from rides r where r.city_id = c.id and r.start_time >= now() - interval '30 days')
     returning c.name`);
   return { disattivate: off.map((r) => r.name), riattivate: on.map((r) => r.name) };
