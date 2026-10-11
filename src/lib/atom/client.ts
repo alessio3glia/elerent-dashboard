@@ -61,6 +61,9 @@ export type AtomVehicle = {
   [key: string]: unknown;
 };
 
+/** Stati delle corse nell'API admin di Atom (ACTIVE = in corso). */
+export type RideStatus = "ACTIVE" | "ENDED" | "IN_REVIEW";
+
 export type AtomCustomer = {
   id: number;
   name?: string;
@@ -178,11 +181,11 @@ export class AtomClient {
     return res.zones ?? [];
   }
 
-  async ridesPage(bookmark: string | null, dateRange?: unknown) {
+  async ridesPage(bookmark: string | null, dateRange?: unknown, status: RideStatus = "ENDED") {
     const res = await this.request<{ data: AtomRide[]; has_next_page: boolean; bookmark_next: string }>(
       "POST",
       "/api/v2/admin/rides",
-      { ride_status: "ENDED", page_length: 100, page_bookmark: bookmark, ...(dateRange ? { date_range: dateRange } : {}) },
+      { ride_status: status, page_length: 100, page_bookmark: bookmark, ...(dateRange ? { date_range: dateRange } : {}) },
     );
     return { rides: res.data, next: res.has_next_page && res.data.length > 0 ? res.bookmark_next : null };
   }
@@ -191,11 +194,11 @@ export class AtomClient {
    * Corse concluse, dalla più recente, finché non si arriva prima di `since`.
    * Assume che Atom le ordini dalla più recente (verificabile da Impostazioni → Diagnostica).
    */
-  async ridesSince(since: Date, maxPages = 200): Promise<AtomRide[]> {
+  async ridesSince(since: Date, maxPages = 200, status: RideStatus = "ENDED"): Promise<AtomRide[]> {
     const out: AtomRide[] = [];
     let bookmark: string | null = null;
     for (let i = 0; i < maxPages; i++) {
-      const page = await this.ridesPage(bookmark);
+      const page = await this.ridesPage(bookmark, undefined, status);
       out.push(...page.rides);
       const last = page.rides.at(-1);
       const oldest = parseDate(last?.history_start_date ?? last?.start_time);

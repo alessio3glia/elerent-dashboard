@@ -47,7 +47,7 @@ export function mapVehicle(v: AtomVehicle, areas: CityArea[], previousCityId: nu
   };
 }
 
-export function mapRide(r: AtomRide, vehicleCity: Map<number, number | null>, areas: CityArea[]) {
+export function mapRide(r: AtomRide, vehicleCity: Map<number, number | null>, areas: CityArea[], status = "ENDED") {
   const start = parseDate(r.history_start_date ?? r.start_time);
   if (!start) return null;
   const end = parseDate(r.history_end_date ?? r.end_time);
@@ -67,6 +67,7 @@ export function mapRide(r: AtomRide, vehicleCity: Map<number, number | null>, ar
     km: parseNumber(r.kilometers),
     minutes: end ? (end.getTime() - start.getTime()) / 60000 : null,
     price: parseNumber(r.price) ?? 0,
+    status,
     chargedBalance: parseNumber(r.charged_balance),
     chargedBonus: parseNumber(r.charged_bonus),
     withSubscription: r.paid_with_subscription ? !["", "-", "no", "false"].includes(r.paid_with_subscription.toLowerCase()) : null,

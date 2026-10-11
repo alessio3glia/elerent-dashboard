@@ -11,7 +11,7 @@ import { liveVehicles, recentRideEnds } from "@/lib/fleet-status";
 import { subscriptionsMonthToDate } from "@/lib/subscriptions-queries";
 import { getLiveState, todayByCity, todaySubscriptionsByCity } from "@/lib/live";
 import { addDays, formatDay, localDay, sameWeekdayLastYear } from "@/lib/dates";
-import { subscriptionsBetween } from "@/lib/revenue";
+import { subscriptionsBetween, todayMoney } from "@/lib/revenue";
 import { ridesSoFarOn } from "@/lib/yoy";
 import { METRICS, formatMetric } from "@/lib/metrics/catalog";
 import { inRange, sumByDay } from "@/lib/metrics/aggregate";
@@ -36,11 +36,21 @@ function LiveFigure({ label, value, delta, ly, week, sub }: { label: string; val
   );
 }
 
+function MoneyCell({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: "critical" | "warning" }) {
+  return (
+    <div>
+      <div className="text-xs text-ink-3">{label}</div>
+      <div className={`tabular text-lg font-semibold ${tone === "critical" ? "text-critical" : tone === "warning" ? "text-warning" : ""}`}>{value}</div>
+      <div className="text-xs text-ink-3">{hint}</div>
+    </div>
+  );
+}
+
 export default async function OverviewPage() {
   const last = await lastMetricDay();
   const todayDay = localDay();
   const lyMonth = `${Number(todayDay.slice(0, 4)) - 1}${todayDay.slice(4, 7)}`;
-  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh, notes, lyRows, lyToday, lySubs] = await Promise.all([
+  const [cities, rows, alerts, todayTasks, sync, today, live, mapVehicles, rideEnds, todaySubs, monthSubs, pace, hourly, fresh, notes, lyRows, lyToday, lySubs, money] = await Promise.all([
     listCities(),
     metricsBetween(addDays(last, -59), last),
     recentAlerts(1),
@@ -60,6 +70,7 @@ export default async function OverviewPage() {
     metricsBetween(sameWeekdayLastYear(addDays(last, -59)), sameWeekdayLastYear(last)),
     ridesSoFarOn(sameWeekdayLastYear(todayDay)),
     subscriptionsBetween(`${lyMonth}-01`, `${lyMonth}-${todayDay.slice(8)}`),
+    todayMoney(),
   ]);
   const pctById = (id: number) => cities.find((c) => c.id === id)?.revenueSharePct;
   const health = await cityHealth(cities.filter((c) => c.active).map((c) => c.id));
@@ -217,6 +228,20 @@ export default async function OverviewPage() {
           <LiveFigure label="Fatturato" value={formatMetric(todayTotal.revenue, "eur")} delta={change(todayTotal.revenue, lyTodayTotal.revenue)} ly={formatMetric(lyTodayTotal.revenue, "eur")} />
           <LiveFigure label="Veicoli usati" value={formatMetric(todayTotal.vehicles, "num")} delta={change(todayTotal.vehicles, lyTodayTotal.vehicles)} ly={formatMetric(lyTodayTotal.vehicles, "num")} />
           <LiveFigure label="Abbonamenti venduti" value={formatMetric(subsToday.n, "num")} sub={formatMetric(subsToday.revenue, "eur")} />
+        </div>
+        <div className="mt-4 rounded-lg border border-line p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <div className="text-sm text-ink-2">Fatturato globale di oggi</div>
+            <div className="tabular text-2xl font-semibold text-brand">{formatMetric((money?.fatturato ?? 0) + subsToday.revenue, "eur")}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3 xl:grid-cols-6">
+            <MoneyCell label="Corse" value={formatMetric(money?.fatturato ?? 0, "eur")} hint={`${money?.rides ?? 0} corse finite`} />
+            <MoneyCell label="Abbonamenti" value={formatMetric(subsToday.revenue, "eur")} hint={`${subsToday.n} venduti`} />
+            <MoneyCell label="Incassato dal credito" value={formatMetric(money?.incassato ?? 0, "eur")} hint="scalato dal saldo utenti" />
+            <MoneyCell label="Pagato con bonus" value={formatMetric(money?.bonus ?? 0, "eur")} hint="credito omaggio" />
+            <MoneyCell label="Non pagato" value={formatMetric(money?.non_pagato ?? 0, "eur")} hint={`${money?.unpaid_rides ?? 0} corse`} tone="critical" />
+            <MoneyCell label="In revisione" value={formatMetric(money?.in_review_amount ?? 0, "eur")} hint={`${money?.in_review ?? 0} corse non ancora chiuse`} tone="warning" />
+          </div>
         </div>
         {todayRows.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">

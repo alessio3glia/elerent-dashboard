@@ -91,11 +91,21 @@ export async function liveSync(force = false) {
     }
 
     // Corse: un'ora di margine sull'ultima corsa salvata, perché le corse finiscono dopo essere iniziate.
+    // Tre ore di margine: Atom ordina per inizio, quindi una corsa lunga compare solo quando finisce.
     await step("corse", async () => {
       const [{ last }] = await db.select({ last: max(rides.startTime) }).from(rides);
-      const since = last ? new Date(new Date(last).getTime() - 3_600_000) : new Date(Date.now() - 86_400_000);
-      next.rides = await saveRides(await client.ridesSince(since, 30), vehicleCity, areas, since);
+      const since = last ? new Date(new Date(last).getTime() - 3 * 3_600_000) : new Date(Date.now() - 86_400_000);
+      next.rides = await saveRides(await client.ridesSince(since, 40), vehicleCity, areas, since);
       await updateLastRides(since);
+    });
+
+    // Corse in revisione: finite ma non ancora chiuse da Atom. Contano nel fatturato del giorno.
+    await step("corse in revisione", async () => {
+      const inReview = await client.ridesSince(new Date(Date.now() - 60 * 86_400_000), 20, "IN_REVIEW");
+      await saveRides(inReview, vehicleCity, areas, undefined, "IN_REVIEW");
+      // Quelle uscite dalla revisione sono state chiuse da Atom.
+      const ids = inReview.map((r) => Number(r.id)).filter(Number.isFinite);
+      await db.execute(sql`update rides set status = 'ENDED' where status = 'IN_REVIEW'${ids.length ? sql` and atom_id not in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})` : sql``}`);
     });
 
     // Utenti nuovi: le prime pagine di Atom (dal più recente), finché ne arrivano di nuovi.

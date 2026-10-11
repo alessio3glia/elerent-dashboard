@@ -57,6 +57,13 @@
       "when": 1791707549609,
       "tag": "0007_aggiornamenti_dashboard",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791748319300,
+      "tag": "0008_stato_corse",
+      "breakpoints": true
     }
   ]
 }

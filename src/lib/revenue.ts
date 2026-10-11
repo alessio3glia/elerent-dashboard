@@ -39,3 +39,22 @@ export async function subscriptionsBetween(from: string, to: string) {
       and purchased_at < ((${to}::date + 1)::timestamp at time zone ${TZ})
     group by 1`);
 }
+
+/**
+ * Soldi delle corse di oggi (ora italiana): fatturato = prezzo di tutte le corse finite, anche in revisione;
+ * incassato = scalato dal credito dell'utente; bonus = scalato dai bonus; non pagato = il resto.
+ */
+export async function todayMoney() {
+  const [row] = await db.execute<{ rides: number; fatturato: number; incassato: number; bonus: number; non_pagato: number; unpaid_rides: number; in_review: number; in_review_amount: number }>(sql`
+    select count(*)::int as rides,
+      coalesce(sum(price), 0)::float as fatturato,
+      coalesce(sum(charged_balance), 0)::float as incassato,
+      coalesce(sum(charged_bonus), 0)::float as bonus,
+      coalesce(sum(greatest(price - coalesce(charged_balance, 0) - coalesce(charged_bonus, 0), 0)), 0)::float as non_pagato,
+      count(*) filter (where price - coalesce(charged_balance, 0) - coalesce(charged_bonus, 0) > 0.009)::int as unpaid_rides,
+      count(*) filter (where status = 'IN_REVIEW')::int as in_review,
+      coalesce(sum(price) filter (where status = 'IN_REVIEW'), 0)::float as in_review_amount
+    from rides
+    where start_time >= (date_trunc('day', now() at time zone ${TZ}) at time zone ${TZ})`);
+  return row;
+}

@@ -133,10 +133,10 @@ export async function syncVehicles(client: AtomClient, initialAreas: CityArea[],
   };
 }
 
-export async function saveRides(atomRides: AtomRide[], vehicleCity: Map<number, number | null>, areas: CityArea[], since?: Date) {
+export async function saveRides(atomRides: AtomRide[], vehicleCity: Map<number, number | null>, areas: CityArea[], since?: Date, status = "ENDED") {
   const rows = uniqueBy(
     atomRides
-      .map((r) => mapRide(r, vehicleCity, areas))
+      .map((r) => mapRide(r, vehicleCity, areas, status))
       .filter((r): r is NonNullable<typeof r> => r !== null && (!since || r.startTime >= since)),
     (r) => r.atomId,
   );
@@ -149,6 +149,10 @@ export async function saveRides(atomRides: AtomRide[], vehicleCity: Map<number, 
         set: {
           endTime: excluded("end_time"),
           price: excluded("price"),
+          // Il pagamento può arrivare dopo la prima lettura (o la corsa uscire dalla revisione): si aggiorna sempre.
+          chargedBalance: excluded("charged_balance"),
+          chargedBonus: excluded("charged_bonus"),
+          status: excluded("status"),
           km: excluded("km"),
           minutes: excluded("minutes"),
           endLat: excluded("end_lat"),

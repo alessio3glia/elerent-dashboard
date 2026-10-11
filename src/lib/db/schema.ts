@@ -92,6 +92,8 @@ export const rides = pgTable(
     chargedBalance: doublePrecision("charged_balance"),
     chargedBonus: doublePrecision("charged_bonus"),
     withSubscription: boolean("with_subscription"),
+    /** Stato Atom: ENDED (conclusa) o IN_REVIEW (in revisione, non ancora chiusa da Atom). */
+    status: text("status").notNull().default("ENDED"),
     /** Punto di arrivo: serve per la mappa live e per le mappe della domanda. */
     endLat: doublePrecision("end_lat"),
     endLng: doublePrecision("end_lng"),
