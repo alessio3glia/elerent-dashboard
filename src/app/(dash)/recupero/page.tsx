@@ -9,6 +9,8 @@ import {
   getRecoverySettings,
   getScanState,
   openCases,
+  debtCities,
+  type CaseFilters,
   recentEmails,
   recentRecovered,
   recoveredByStage,
@@ -21,18 +23,39 @@ export const dynamic = "force-dynamic";
 const when = (d: Date | null) => (d ? new Date(d).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 const day = (d: Date | null) => (d ? new Date(d).toLocaleDateString("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short" }) : "—");
 
-export default async function RecoveryPage() {
+const AGES = [
+  { key: "", label: "Tutti" },
+  { key: "7", label: "Ultimi 7 giorni", maxDays: 7 },
+  { key: "7-30", label: "7-30 giorni", minDays: 7, maxDays: 30 },
+  { key: "30", label: "Oltre 30 giorni", minDays: 30 },
+] as const;
+
+export default async function RecoveryPage({ searchParams }: PageProps<"/recupero">) {
   const user = await requireUser();
+  const sp = await searchParams;
+  const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
+  const age = AGES.find((a) => a.key === str("eta")) ?? AGES[0];
+  const filters: CaseFilters = {
+    city: str("citta") || undefined,
+    minDebt: Number(str("min")) || undefined,
+    stage: str("fase") !== "" && Number.isInteger(Number(str("fase"))) ? Number(str("fase")) : undefined,
+    minDays: "minDays" in age ? age.minDays : undefined,
+    maxDays: "maxDays" in age ? age.maxDays : undefined,
+    sort: str("ordine") === "vecchie" ? "vecchie" : "debito",
+  };
   const settings = await getRecoverySettings();
-  const [summary, byStage, cases, recovered, emails, due, scan] = await Promise.all([
+  const [summary, byStage, cases, recovered, emails, due, scan, cityNames] = await Promise.all([
     recoverySummary(),
     recoveredByStage(),
-    openCases(200),
+    openCases(300, filters),
     recentRecovered(),
     recentEmails(),
     dueCases(settings, 1000),
     getScanState(),
+    debtCities(),
   ]);
+  const filtered = Object.values(filters).some((v) => v !== undefined && v !== "debito");
+  const casesDebt = cases.reduce((a, c) => a + (c.debt ?? c.current_debt), 0);
   const cfg = emailConfig();
   const rate = summary && summary.opened_90 > 0 ? summary.rec_90 / summary.opened_90 : null;
 
@@ -83,7 +106,37 @@ export default async function RecoveryPage() {
         </Card>
       </div>
 
-      <Card title={`Pratiche aperte · le ${cases.length} più alte`} className="mt-6 overflow-x-auto">
+      <Card title={`Pratiche aperte · ${cases.length}${cases.length === 300 ? "+" : ""} ${filtered ? "con questi filtri" : "le più alte"} · ${formatMetric(casesDebt, "eur")}`} className="mt-6 overflow-x-auto">
+        <form className="mb-4 flex flex-wrap items-end gap-3 text-sm">
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Città
+            <select name="citta" defaultValue={filters.city ?? ""} className="input">
+              <option value="">Tutte</option>
+              {cityNames.map((c) => <option key={c.city} value={c.city}>{c.city} ({c.n})</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Debito almeno (€)
+            <input name="min" type="number" min="0" step="1" defaultValue={filters.minDebt ?? ""} className="input w-28" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Da quanto
+            <select name="eta" defaultValue={age.key} className="input">
+              {AGES.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Solleciti
+            <select name="fase" defaultValue={filters.stage ?? ""} className="input">
+              <option value="">Tutti</option>
+              {STAGE_LABEL.map((l, i) => <option key={i} value={i}>{l}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Ordine
+            <select name="ordine" defaultValue={filters.sort} className="input">
+              <option value="debito">Debito più alto</option>
+              <option value="vecchie">Più vecchie</option>
+            </select>
+          </label>
+          <button className="btn-primary">Filtra</button>
+          {filtered && <a href="/recupero" className="btn-secondary">Azzera</a>}
+        </form>
         {cases.length === 0 ? (
           <Empty>Nessun debito aperto. 🎉</Empty>
         ) : (

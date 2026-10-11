@@ -306,15 +306,37 @@ export async function recoveredByStage() {
     from debt_cases where status = 'recuperata' group by stage order by stage`);
 }
 
-export async function openCases(limit = 200, stage?: number) {
+export type CaseFilters = { stage?: number; city?: string; minDebt?: number; minDays?: number; maxDays?: number; sort?: "debito" | "vecchie" };
+
+/** Città dei debitori aperti (dall'ultima corsa), per il filtro. */
+export async function debtCities() {
+  return db.execute<{ city: string; n: number }>(sql`
+    select city, count(*)::int as n from (
+      select (select ci.name from rides r join cities ci on ci.id = r.city_id
+              where r.customer_atom_id = d.customer_atom_id order by r.start_time desc limit 1) as city
+      from debt_cases d where d.status = 'aperta'
+    ) x where city is not null group by city order by n desc`);
+}
+
+/** Pratiche aperte filtrate per fase, città (dell'ultima corsa), importo minimo e giorni di debito. */
+export async function openCases(limit = 200, f: CaseFilters = {}) {
+  const where = [sql`status = 'aperta'`];
+  if (f.stage !== undefined) where.push(sql`stage = ${f.stage}`);
+  if (f.city) where.push(sql`city = ${f.city}`);
+  if (f.minDebt) where.push(sql`coalesce(debt, current_debt) >= ${f.minDebt}`);
+  if (f.minDays) where.push(sql`opened_at <= now() - make_interval(days => ${f.minDays}::int)`);
+  if (f.maxDays) where.push(sql`opened_at > now() - make_interval(days => ${f.maxDays}::int)`);
   return db.execute<CaseRow & { opened_at: Date; phone: string | null }>(sql`
-    select d.id, d.customer_atom_id, d.stage, d.status, d.current_debt, d.last_email_at, d.opened_at,
-           c.name, c.email, c.phone, c.debt, c.updated_at,
-           (select ci.name from rides r join cities ci on ci.id = r.city_id
-            where r.customer_atom_id = d.customer_atom_id order by r.start_time desc limit 1) as city
-    from debt_cases d join customers c on c.atom_id = d.customer_atom_id
-    where d.status = 'aperta' ${stage === undefined ? sql`` : sql`and d.stage = ${stage}`}
-    order by d.current_debt desc
+    select * from (
+      select d.id, d.customer_atom_id, d.stage, d.status, d.current_debt, d.last_email_at, d.opened_at,
+             c.name, c.email, c.phone, c.debt, c.updated_at,
+             (select ci.name from rides r join cities ci on ci.id = r.city_id
+              where r.customer_atom_id = d.customer_atom_id order by r.start_time desc limit 1) as city
+      from debt_cases d join customers c on c.atom_id = d.customer_atom_id
+      where d.status = 'aperta'
+    ) x
+    where ${sql.join(where, sql` and `)}
+    order by ${f.sort === "vecchie" ? sql`opened_at asc` : sql`coalesce(debt, current_debt) desc`}
     limit ${limit}`);
 }
 
