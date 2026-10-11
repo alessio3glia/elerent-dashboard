@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/", label: "Panoramica" },
   { href: "/task", label: "Task di oggi" },
+  { href: "/task/storico", label: "Task non svolte" },
   { href: "/attivita", label: "Attività svolte" },
   { href: "/alert", label: "Alert" },
   { href: "/ricavi", label: "Ricavi" },
@@ -31,7 +32,9 @@ export function Nav({ isAdmin, openTasks }: { isAdmin: boolean; openTasks: numbe
   return (
     <nav className="flex gap-1 overflow-x-auto md:flex-col">
       {links.map((l) => {
-        const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
+        // Il link più specifico vince: /task/storico accende "Task non svolte", non "Task di oggi".
+        const matches = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`));
+        const active = matches(l.href) && !links.some((o) => o.href.length > l.href.length && o.href.startsWith(l.href) && matches(o.href));
         return (
           <Link
             key={l.href}
