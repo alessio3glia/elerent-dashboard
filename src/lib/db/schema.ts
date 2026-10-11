@@ -329,6 +329,16 @@ export const notifications = pgTable(
   (t) => [index("notifications_created").on(t.createdAt)],
 );
 
+/** Chi ha ricevuto ogni notifica reale (ID utente Atom), per misurarne l'effetto su corse e abbonamenti. */
+export const notificationRecipients = pgTable(
+  "notification_recipients",
+  {
+    notificationId: integer("notification_id").notNull().references(() => notifications.id, { onDelete: "cascade" }),
+    customerAtomId: integer("customer_atom_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.notificationId, t.customerAtomId] })],
+);
+
 /** Quanti mezzi erano disponibili (in strada, con segnale e batteria) per città, una foto ogni 15 minuti. */
 export const fleetAvailability = pgTable(
   "fleet_availability",

@@ -71,6 +71,13 @@
       "when": 1791749763291,
       "tag": "0009_task_di_rete",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791750465240,
+      "tag": "0010_destinatari_notifiche",
+      "breakpoints": true
     }
   ]
 }

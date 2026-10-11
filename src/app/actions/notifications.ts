@@ -33,10 +33,13 @@ export async function sendNotification(_prev: SendState, form: FormData): Promis
   if (!cfg.configured) return { error: "OneSignal non è ancora collegato: servono ONESIGNAL_APP_ID e ONESIGNAL_REST_API_KEY su Vercel." };
 
   let externalIds: string[] = [];
+  let atomIds: number[] = [];
   if (mode === "invio") {
     if (parsed.data.confirm !== "on") return { error: "Spunta la conferma prima di inviare agli utenti." };
     const rows = await segmentRecipients(segment as Segment, cityId);
-    externalIds = [...new Set(rows.map((r) => (cfg.externalIdField === "atom_id" ? String(r.id) : r[cfg.externalIdField])).filter((v): v is string => Boolean(v)))];
+    const targeted = rows.filter((r) => (cfg.externalIdField === "atom_id" ? r.id : r[cfg.externalIdField]));
+    externalIds = [...new Set(targeted.map((r) => (cfg.externalIdField === "atom_id" ? String(r.id) : r[cfg.externalIdField]) as string))];
+    atomIds = [...new Set(targeted.map((r) => Number(r.id)))];
     if (!externalIds.length) return { error: "Nessun destinatario in questo segmento." };
     // Se nel frattempo il segmento è cambiato, si fa riconfermare il numero
     if (parsed.data.expected !== undefined && parsed.data.expected !== externalIds.length) {
@@ -63,6 +66,13 @@ export async function sendNotification(_prev: SendState, form: FormData): Promis
     .insert(schema.notifications)
     .values({ segment, cityId, title, body, test, status: "in_invio", recipients: test ? cfg.testIds.length : externalIds.length, sentBy: user.name })
     .returning({ id: schema.notifications.id });
+  // Si salva chi la riceve, per misurare poi l'effetto su corse e abbonamenti
+  for (let i = 0; i < atomIds.length; i += 5000) {
+    await db
+      .insert(schema.notificationRecipients)
+      .values(atomIds.slice(i, i + 5000).map((customerAtomId) => ({ notificationId: row.id, customerAtomId })))
+      .onConflictDoNothing();
+  }
   try {
     const res = await sendPush(title, body, test ? { test: true } : { externalIds });
     await db
