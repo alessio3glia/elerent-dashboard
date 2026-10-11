@@ -19,3 +19,8 @@ export function daysInMonth(day: string): number {
 export function formatDay(day: string): string {
   return new Date(`${day}T12:00:00Z`).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 }
+
+/** Stesso giorno della settimana dell'anno prima (52 settimane fa): un lunedì si confronta con un lunedì. */
+export function sameWeekdayLastYear(day: string): string {
+  return addDays(day, -364);
+}
