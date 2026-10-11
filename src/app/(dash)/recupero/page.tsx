@@ -90,13 +90,16 @@ export default async function RecoveryPage() {
           <table className="table tabular">
             <thead>
               <tr>
-                <th>Utente</th><th>Email</th><th>Città</th><th className="text-right">Debito</th><th>Aperta</th><th>Fase</th><th>Ultima email</th><th>Verificato</th><th />
+                <th>Utente</th><th>Telefono</th><th>Email</th><th>Città</th><th className="text-right">Debito</th><th>Aperta</th><th>Fase</th><th>Ultima email</th><th>Verificato</th><th />
               </tr>
             </thead>
             <tbody>
               {cases.map((c) => (
                 <tr key={c.id}>
                   <td>{c.name ?? `Utente ${c.customer_atom_id}`}</td>
+                  <td className="whitespace-nowrap">
+                    {c.phone ? <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="text-brand hover:underline">{c.phone}</a> : <span className="text-ink-3">—</span>}
+                  </td>
                   <td className="text-ink-2">{c.email ?? <span className="text-critical">manca</span>}</td>
                   <td>{c.city ?? "—"}</td>
                   <td className="text-right font-medium text-critical">{formatMetric(c.debt ?? c.current_debt, "eur")}</td>
