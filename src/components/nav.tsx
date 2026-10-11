@@ -2,6 +2,7 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, type ReactNode } from "react";
 
 const LINKS = [
   { href: "/", label: "Panoramica" },
@@ -26,6 +27,20 @@ function Pending() {
   return <span aria-hidden className={`ml-2 h-1.5 w-1.5 rounded-full bg-brand transition-opacity ${pending ? "animate-pulse opacity-100" : "opacity-0"}`} />;
 }
 
+/**
+ * Link del menu che scarica la pagina intera (dati compresi) appena il mouse ci passa sopra o il dito la tocca:
+ * al clic la pagina è già pronta e si apre senza schermata di caricamento.
+ */
+function NavLink({ href, className, children }: { href: string; className: string; children: ReactNode }) {
+  const [intent, setIntent] = useState(false);
+  const warm = () => setIntent(true);
+  return (
+    <Link href={href} prefetch={intent ? true : null} onMouseEnter={warm} onTouchStart={warm} onFocus={warm} className={className}>
+      {children}
+    </Link>
+  );
+}
+
 export function Nav({ isAdmin, openTasks }: { isAdmin: boolean; openTasks: number }) {
   const path = usePathname();
   const links = isAdmin ? [...LINKS, { href: "/impostazioni", label: "Impostazioni" }] : LINKS;
@@ -36,7 +51,7 @@ export function Nav({ isAdmin, openTasks }: { isAdmin: boolean; openTasks: numbe
         const matches = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`));
         const active = matches(l.href) && !links.some((o) => o.href.length > l.href.length && o.href.startsWith(l.href) && matches(o.href));
         return (
-          <Link
+          <NavLink
             key={l.href}
             href={l.href}
             className={`flex items-center justify-between whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -50,7 +65,7 @@ export function Nav({ isAdmin, openTasks }: { isAdmin: boolean; openTasks: numbe
             {l.href === "/task" && openTasks > 0 && (
               <span className="ml-2 rounded-full bg-brand px-2 text-xs font-semibold text-black">{openTasks}</span>
             )}
-          </Link>
+          </NavLink>
         );
       })}
     </nav>
