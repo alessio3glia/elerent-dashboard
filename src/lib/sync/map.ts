@@ -1,5 +1,5 @@
 import type { AtomCustomer, AtomRide, AtomVehicle } from "@/lib/atom/client";
-import { parseBattery, parseDate, parseNumber } from "@/lib/atom/parse";
+import { parseBattery, parseCents, parseDate, parseNumber } from "@/lib/atom/parse";
 import { cityForPoint, type CityArea } from "@/lib/geo";
 
 /** Id intero da Atom; "-", stringhe vuote o valori non numerici diventano null. */
