@@ -4,17 +4,25 @@ import { PriorityBadge } from "@/components/ui";
 import type { City, Task } from "@/lib/db/schema";
 import { formatDay } from "@/lib/dates";
 
-const KIND = { chiamata: "Chiamata", verifica: "Verifica", ottimizzazione: "Ottimizzazione" } as Record<string, string>;
+const KIND = { chiamata: "Chiamata", verifica: "Verifica", ottimizzazione: "Ottimizzazione", notifica: "Notifiche e marketing" } as Record<string, string>;
+
+/** Dove si fa la task di rete: la pagina Notifiche sul segmento giusto, o Recupero crediti. */
+function taskLink(rule: string): { href: string; label: string } | null {
+  if (rule.startsWith("recupero:")) return { href: "/recupero", label: "Apri Recupero crediti" };
+  if (rule.startsWith("notifica:")) return { href: `/notifiche?segmento=${rule.split(":")[1]}`, label: "Apri Notifiche" };
+  return null;
+}
 
 /** `readOnly`: task di un giorno passato, solo da consultare (com'era a fine giornata). */
-export function TaskCard({ task, city, today, readOnly = false }: { task: Task; city: City; today: string; readOnly?: boolean }) {
+export function TaskCard({ task, city, today, readOnly = false }: { task: Task; city: City | null; today: string; readOnly?: boolean }) {
   const done = task.status !== "aperta";
+  const link = taskLink(task.rule);
   return (
     <article className={`rounded-xl border bg-surface p-5 ${done ? "border-line opacity-60" : "border-line"}`}>
       <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
         <PriorityBadge priority={task.priority} />
         <span className="rounded-full bg-surface-2 px-2 py-0.5">{KIND[task.kind] ?? task.kind}</span>
-        <Link href={`/citta/${city.slug}`} className="hover:text-brand">{city.name}</Link>
+        {city ? <Link href={`/citta/${city.slug}`} className="hover:text-brand">{city.name}</Link> : <span>Tutta la rete</span>}
         {task.day !== today && <span className="text-ink-3">{formatDay(task.day)}</span>}
       </div>
       <div className="mt-2 flex items-start gap-3">
@@ -44,9 +52,12 @@ export function TaskCard({ task, city, today, readOnly = false }: { task: Task; 
       <p className="mt-2 text-sm">
         <span className="text-brand">Cosa fare:</span> {task.action}
       </p>
-      {task.kind === "chiamata" && city.contactPhone && !done && !readOnly && (
-        <a href={`tel:${city.contactPhone.replace(/\s/g, "")}`} className="mt-2 inline-block text-sm text-brand hover:underline">
-          Chiama {city.contactName ?? city.affiliateName ?? ""} · {city.contactPhone}
+      {link && !done && !readOnly && (
+        <Link href={link.href} className="btn-secondary mt-3 inline-flex">{link.label} →</Link>
+      )}
+      {task.kind === "chiamata" && city?.contactPhone && !done && !readOnly && (
+        <a href={`tel:${city?.contactPhone?.replace(/\s/g, "")}`} className="mt-2 inline-block text-sm text-brand hover:underline">
+          Chiama {city?.contactName ?? city?.affiliateName ?? ""} · {city.contactPhone}
         </a>
       )}
       {readOnly ? (

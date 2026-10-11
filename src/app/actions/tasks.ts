@@ -31,7 +31,7 @@ export async function completeTask(form: FormData) {
     await logActivity(user, { kind: `task_${status}`, title: task.title, note, cityId: task.cityId, taskId: task.id });
   }
   // Una chiamata fatta conta come contatto con l'affiliato
-  if (task && status === "fatta" && task.kind === "chiamata") {
+  if (task && task.cityId !== null && status === "fatta" && task.kind === "chiamata") {
     await db.update(schema.cities).set({ lastContactAt: new Date() }).where(eq(schema.cities.id, task.cityId));
   }
   revalidatePath("/", "layout");

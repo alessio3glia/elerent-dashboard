@@ -49,7 +49,7 @@ export async function tasksForDay(day: string) {
   return db
     .select({ task: tasks, city: cities })
     .from(tasks)
-    .innerJoin(cities, eq(cities.id, tasks.cityId))
+    .leftJoin(cities, eq(cities.id, tasks.cityId))
     .where(eq(tasks.day, day))
     .orderBy(asc(tasks.status), asc(tasks.priority), asc(cities.name));
 }

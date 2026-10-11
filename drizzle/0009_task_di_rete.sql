@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ALTER COLUMN "city_id" DROP NOT NULL;

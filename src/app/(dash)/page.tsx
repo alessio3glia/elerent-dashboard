@@ -308,7 +308,7 @@ export default async function OverviewPage() {
               {openTasks.slice(0, 4).map(({ task, city }) => (
                 <li key={task.id} className="rounded-lg bg-surface-2 p-3">
                   <div className="mb-1 flex items-center gap-2 text-xs text-ink-3">
-                    <PriorityBadge priority={task.priority} /> {city.name}
+                    <PriorityBadge priority={task.priority} /> {city?.name ?? "Tutta la rete"}
                   </div>
                   <div className="text-sm">{task.title}</div>
                 </li>

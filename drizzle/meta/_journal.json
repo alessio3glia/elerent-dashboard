@@ -64,6 +64,13 @@
       "when": 1791748319300,
       "tag": "0008_stato_corse",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791749763291,
+      "tag": "0009_task_di_rete",
+      "breakpoints": true
     }
   ]
 }

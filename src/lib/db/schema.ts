@@ -237,11 +237,12 @@ export const tasks = pgTable(
   "tasks",
   {
     id: serial("id").primaryKey(),
-    cityId: integer("city_id").notNull().references(() => cities.id),
+    /** Vuota per le task di tutta la rete (notifiche, recupero crediti). */
+    cityId: integer("city_id").references(() => cities.id),
     alertId: integer("alert_id").references(() => alerts.id),
     day: date("day").notNull(),
     rule: text("rule").notNull(),
-    kind: text("kind").notNull(), // chiamata | verifica | ottimizzazione
+    kind: text("kind").notNull(), // chiamata | verifica | ottimizzazione | notifica
     priority: integer("priority").notNull(), // 1 alta, 2 media, 3 bassa
     title: text("title").notNull(),
     reason: text("reason").notNull(),
