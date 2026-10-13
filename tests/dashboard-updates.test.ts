@@ -24,6 +24,10 @@ describe("interpretUpdate", () => {
     expect(interpretUpdate("Pioggia forte su tutta la Sicilia", cities, today)).toEqual({ kind: "nota", cityId: null, endsOn: null });
     expect(interpretUpdate("Una città non è più attiva", cities, today).kind).toBe("nota");
   });
+  it("riconosce le richieste di modifica per Claude", () => {
+    expect(interpretUpdate("Vorrei vedere i ricavi per città in home", cities, today).kind).toBe("richiesta");
+    expect(interpretUpdate("Il grafico abbonamenti di Messina è sbagliato, correggilo", cities, today)).toEqual({ kind: "richiesta", cityId: 2, endsOn: null });
+  });
   it("legge le date", () => {
     expect(endDateIn("fino al 3/1/2027", today)).toBe("2027-01-03");
     expect(endDateIn("fino al 20 ottobre", today)).toBe("2026-10-20");

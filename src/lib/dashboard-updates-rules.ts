@@ -1,8 +1,14 @@
 /** Regole degli aggiornamenti dashboard, senza database: lettura del testo ed effetto sulle città. */
 
-export type UpdateKind = "citta_chiusa" | "citta_sospesa" | "citta_riaperta" | "nota";
+export type UpdateKind = "richiesta" | "citta_chiusa" | "citta_sospesa" | "citta_riaperta" | "nota";
 
 export const UPDATE_KINDS: Record<UpdateKind, { label: string; needsCity: boolean; hasEnd: boolean; effect: (city: string) => string }> = {
+  richiesta: {
+    label: "Richiesta di modifica a Claude",
+    needsCity: false,
+    hasEnd: false,
+    effect: () => "Claude la legge al prossimo giro, sistema la dashboard e ti risponde qui sotto con cosa ha fatto o cosa gli serve sapere.",
+  },
   citta_chiusa: {
     label: "Città non più operativa",
     needsCity: true,
@@ -68,6 +74,8 @@ export function interpretUpdate(text: string, cities: { id: number; name: string
   else if (/sospes|temporane|in pausa|stagional|fino a(l|llo)? /.test(t) && /citta|attiv|operativ|servizio|sospes|pausa|stagional/.test(t)) kind = "citta_sospesa";
   else if (/(non|piu) (e |sono |la |lo )?(piu )?(attiv|operativ)|non (la |lo )?(gestiamo|abbiamo|seguiamo) piu|citta chiusa|chiusa (definitivamente|per sempre)|abbiamo chiuso|dismess|disattiv|ritirat[oi] (tutti )?i mezzi|abbandonat/.test(t)) kind = "citta_chiusa";
   if (kind !== "nota" && !city) kind = "nota";
+  // Non è un fatto da annotare ma qualcosa da cambiare nella dashboard: la prende in carico Claude.
+  if (kind === "nota" && /\b(aggiung|togli|rimuov|sposta|cambia|metti|mostra|vorrei|voglio|correggi|sistema|sbagliat|non funzion|non si vede|non vedo|rendi|crea|dovresti|bisogna|serve un|manca)/.test(t)) kind = "richiesta";
   return { kind, cityId: city?.id ?? null, endsOn: UPDATE_KINDS[kind].hasEnd ? endsOn : null };
 }
 

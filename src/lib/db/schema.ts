@@ -373,6 +373,11 @@ export const dashboardUpdates = pgTable(
     text: text("text").notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revokedBy: text("revoked_by"),
+    /** Lavorazione da parte di Claude: null = da leggere | in_lavorazione | fatto | serve_chiarimento. */
+    claudeStatus: text("claude_status"),
+    /** Cosa ha fatto Claude (o cosa gli serve), mostrato al dipendente nella pagina. */
+    claudeReply: text("claude_reply"),
+    claudeAt: timestamp("claude_at", { withTimezone: true }),
   },
   (t) => [index("dashboard_updates_city").on(t.cityId, t.startsOn)],
 );
