@@ -1,5 +1,5 @@
 import "server-only";
-import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { addDays, localDay } from "@/lib/dates";
 import { cityOverrides, noteIsCurrent, type UpdateKind } from "@/lib/dashboard-updates-rules";
@@ -22,8 +22,43 @@ export async function addDashboardUpdate(entry: {
     startsOn: entry.startsOn,
     endsOn: entry.endsOn,
     text: entry.text,
+    // Città chiuse, sospese o riaperte le applica subito la dashboard: Claude non deve fare altro.
+    ...(entry.kind.startsWith("citta_") ? { claudeStatus: "fatto", claudeReply: "Applicato subito dalla dashboard.", claudeAt: new Date() } : {}),
   });
   await applyCityOverrides();
+}
+
+export const CLAUDE_STATUSES = ["in_lavorazione", "fatto", "serve_chiarimento"] as const;
+export type ClaudeStatus = (typeof CLAUDE_STATUSES)[number];
+
+/** Richieste e note che Claude non ha ancora chiuso, dalla più vecchia. */
+export async function pendingForClaude() {
+  return db
+    .select({
+      id: dashboardUpdates.id,
+      createdAt: dashboardUpdates.createdAt,
+      userName: dashboardUpdates.userName,
+      kind: dashboardUpdates.kind,
+      city: cities.name,
+      startsOn: dashboardUpdates.startsOn,
+      endsOn: dashboardUpdates.endsOn,
+      text: dashboardUpdates.text,
+      claudeStatus: dashboardUpdates.claudeStatus,
+      claudeReply: dashboardUpdates.claudeReply,
+    })
+    .from(dashboardUpdates)
+    .leftJoin(cities, eq(cities.id, dashboardUpdates.cityId))
+    .where(and(isNull(dashboardUpdates.revokedAt), or(isNull(dashboardUpdates.claudeStatus), eq(dashboardUpdates.claudeStatus, "in_lavorazione"))))
+    .orderBy(asc(dashboardUpdates.createdAt));
+}
+
+export async function setClaudeStatus(id: number, status: ClaudeStatus, reply: string | null) {
+  const [row] = await db
+    .update(dashboardUpdates)
+    .set({ claudeStatus: status, claudeReply: reply, claudeAt: new Date() })
+    .where(eq(dashboardUpdates.id, id))
+    .returning({ id: dashboardUpdates.id });
+  return !!row;
 }
 
 export async function revokeDashboardUpdate(id: number, by: string) {
