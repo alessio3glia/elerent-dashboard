@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { TZ } from "@/lib/dates";
+import { shownRides } from "@/lib/shown-data";
 
 /** Fatturato delle corse per giorno e città (per la quota % giornaliera). */
 export async function revenueByDay(from: string, to: string) {
@@ -11,6 +12,7 @@ export async function revenueByDay(from: string, to: string) {
     where city_id is not null
       and start_time >= (${from}::date::timestamp at time zone ${TZ})
       and start_time < ((${to}::date + 1)::timestamp at time zone ${TZ})
+      and ${shownRides()}
     group by 1, 2`);
 }
 
@@ -55,6 +57,6 @@ export async function todayMoney() {
       count(*) filter (where status = 'IN_REVIEW')::int as in_review,
       coalesce(sum(price) filter (where status = 'IN_REVIEW'), 0)::float as in_review_amount
     from rides
-    where start_time >= (date_trunc('day', now() at time zone ${TZ}) at time zone ${TZ})`);
+    where start_time >= (date_trunc('day', now() at time zone ${TZ}) at time zone ${TZ}) and ${shownRides()}`);
   return row;
 }

@@ -31,6 +31,9 @@ export function CityForm({ city }: { city?: City }) {
       <label className="flex items-center gap-2 self-end pb-2 text-sm">
         <input type="checkbox" name="active" defaultChecked={city?.active ?? true} className="accent-[var(--brand)]" /> Attiva
       </label>
+      <label className="flex items-center gap-2 self-end pb-2 text-sm" title="Esclusa da tutte le viste e dai totali, i dati restano salvati">
+        <input type="checkbox" name="hidden" defaultChecked={city?.hidden ?? false} className="accent-[var(--brand)]" /> Nascosta
+      </label>
       <div className="flex items-end gap-3">
         <button disabled={pending} className="btn-primary">{city ? "Salva" : "Aggiungi città"}</button>
         {state?.ok && <span className="text-xs text-brand">Salvato</span>}

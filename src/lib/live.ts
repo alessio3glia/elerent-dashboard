@@ -10,6 +10,7 @@ import { scanUsers, syncDebtCases } from "@/lib/recovery";
 import { nameCities, updateCityActivity } from "@/lib/sync/cities";
 import { getSubscriptionsState, syncSubscriptions } from "@/lib/sync/subscriptions";
 import { acquireLock, activeAreas, countNewCustomers, getBackfillState, releaseLock, saveCustomers, saveRides, slugify, syncVehicles, updateLastRides } from "@/lib/sync/sync";
+import { shownRides } from "@/lib/shown-data";
 
 const { rides, vehicles, syncState } = schema;
 
@@ -176,7 +177,7 @@ export async function todayByCity() {
     select city_id, count(*)::int as rides, coalesce(sum(price), 0)::float as revenue,
            count(distinct vehicle_atom_id)::int as vehicles, max(start_time) as last_ride
     from rides
-    where start_time >= ${todayStart}
+    where start_time >= ${todayStart} and ${shownRides()}
     group by city_id`);
 }
 

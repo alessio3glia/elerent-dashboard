@@ -91,7 +91,8 @@ export async function nameCities(slugify: (s: string) => string, deadline = Date
 /**
  * Città operative: si disattivano quelle senza corse negli ultimi 365 giorni e si riattivano da sole
  * appena tornano ad avere corse negli ultimi 30 giorni. Le città disattivate restano nei dati storici.
- * Le città chiuse, sospese o riaperte a mano da "Aggiornamenti dashboard" seguono quello che ha deciso il dipendente.
+ * Le città chiuse, sospese o riaperte a mano da "Aggiornamenti dashboard" seguono quello che ha deciso il dipendente;
+ * quelle nascoste non si riattivano da sole.
  */
 export async function updateCityActivity() {
   const manual = await applyCityOverrides();
@@ -103,7 +104,7 @@ export async function updateCityActivity() {
     returning c.name`);
   const on = await db.execute<{ name: string }>(sql`
     update cities c set active = true
-    where not c.active ${skip}
+    where not c.active and not c.hidden ${skip}
       and exists (select 1 from rides r where r.city_id = c.id and r.start_time >= now() - interval '30 days')
     returning c.name`);
   return { disattivate: off.map((r) => r.name), riattivate: on.map((r) => r.name) };

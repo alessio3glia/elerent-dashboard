@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { liveVehicles } from "@/lib/fleet-status";
 import { getLiveState } from "@/lib/live";
+import { shownRides } from "@/lib/shown-data";
 
 /** Inizio di oggi in ora italiana. */
 const todayStart = sql`(date_trunc('day', now() at time zone 'Europe/Rome') at time zone 'Europe/Rome')`;
@@ -30,7 +31,7 @@ export async function paceByCity(): Promise<PaceRow[]> {
       count(*) filter (where start_time >= ${todayStart} - interval '28 days' and start_time < now() - interval '28 days')::int as w4,
       count(*) filter (where start_time >= ${todayStart} - interval '7 days' and start_time < ${todayStart} - interval '6 days')::int as w1_day
     from rides
-    where start_time >= ${todayStart} - interval '28 days'
+    where start_time >= ${todayStart} - interval '28 days' and ${shownRides()}
     group by city_id`);
   return rows.map((r) => ({ city_id: r.city_id, today: r.today, week1: r.w1, avg4: (r.w1 + r.w2 + r.w3 + r.w4) / 4, week1Day: r.w1_day }));
 }
@@ -43,7 +44,7 @@ export async function hourlyToday(cityId?: number) {
       count(*) filter (where start_time < ${todayStart} - interval '6 days')::int as week1
     from rides
     where ((start_time >= ${todayStart}) or (start_time >= ${todayStart} - interval '7 days' and start_time < ${todayStart} - interval '6 days'))
-      and ${cityId ? sql`city_id = ${cityId}` : sql`true`}
+      and ${cityId ? sql`city_id = ${cityId}` : sql`true`} and ${shownRides()}
     group by 1`);
   const nowHour = Number(new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", hour12: false }).format(new Date())) % 24;
   let a = 0;

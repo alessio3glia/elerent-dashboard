@@ -19,7 +19,7 @@ const when = (d: Date) =>
 
 export default async function UpdatesPage() {
   const today = localDay();
-  const [rows, cities] = await Promise.all([listDashboardUpdates(), listCities({ all: true })]);
+  const [rows, cities] = await Promise.all([listDashboardUpdates(), listCities({ all: true, withHidden: true })]);
   const overrides = cityOverrides(rows.map((r) => r.update), today);
 
   // Stato di ogni aggiornamento oggi: quello che lo spiega al dipendente in una parola.

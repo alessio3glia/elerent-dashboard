@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { TZ } from "@/lib/dates";
+import { shownRides } from "@/lib/shown-data";
 
 /**
  * Corse di un giorno passato fino alla stessa ora di adesso, per città:
@@ -13,5 +14,6 @@ export async function ridesSoFarOn(day: string) {
     from rides
     where start_time >= (${day}::date::timestamp at time zone ${TZ})
       and start_time < ((${day}::date::timestamp + ((now() at time zone ${TZ}) - (now() at time zone ${TZ})::date::timestamp)) at time zone ${TZ})
+      and ${shownRides()}
     group by city_id`);
 }
