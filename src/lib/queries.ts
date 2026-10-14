@@ -1,16 +1,20 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { TZ, addDays, localDay } from "@/lib/dates";
+import { shownData, shownRides } from "@/lib/shown-data";
 
 const { cities, dailyMetrics, alerts, tasks, syncRuns, vehicles } = schema;
 
-/** Città da mostrare: di default solo quelle operative (attive). Impostazioni le chiede tutte. */
-export async function listCities(opts: { all?: boolean } = {}) {
+/**
+ * Città da mostrare: di default solo quelle operative (attive); `all` aggiunge le non operative,
+ * `withHidden` anche quelle nascoste da "Aggiornamenti dashboard" (solo Impostazioni e Aggiornamenti).
+ */
+export async function listCities(opts: { all?: boolean; withHidden?: boolean } = {}) {
   return db
     .select()
     .from(cities)
-    .where(opts.all ? undefined : eq(cities.active, true))
+    .where(and(opts.all ? undefined : eq(cities.active, true), opts.withHidden ? undefined : eq(cities.hidden, false)))
     .orderBy(asc(cities.name));
 }
 
@@ -39,6 +43,7 @@ export async function metricsBetween(from: string, to: string, cityIds?: number[
         gte(dailyMetrics.day, from),
         lte(dailyMetrics.day, to),
         cityIds ? inArray(dailyMetrics.cityId, cityIds) : undefined,
+        shownData(sql.raw(`"daily_metrics"."city_id"`), sql.raw(`"daily_metrics"."day"`)),
       ),
     )
     .orderBy(asc(dailyMetrics.day));
@@ -50,7 +55,7 @@ export async function tasksForDay(day: string) {
     .select({ task: tasks, city: cities })
     .from(tasks)
     .leftJoin(cities, eq(cities.id, tasks.cityId))
-    .where(eq(tasks.day, day))
+    .where(and(eq(tasks.day, day), or(isNull(tasks.cityId), eq(cities.hidden, false))))
     .orderBy(asc(tasks.status), asc(tasks.priority), asc(cities.name));
 }
 
@@ -74,7 +79,7 @@ export async function recentAlerts(days = 14, cityId?: number) {
     .select({ alert: alerts, city: cities })
     .from(alerts)
     .innerJoin(cities, eq(cities.id, alerts.cityId))
-    .where(and(gte(alerts.day, addDays(localDay(), -days)), cityId ? eq(alerts.cityId, cityId) : undefined))
+    .where(and(gte(alerts.day, addDays(localDay(), -days)), cityId ? eq(alerts.cityId, cityId) : undefined, eq(cities.hidden, false)))
     .orderBy(desc(alerts.day), sql`case ${alerts.severity} when 'critical' then 0 when 'warning' then 1 else 2 end`);
 }
 
@@ -96,7 +101,7 @@ export type MonthRow = { cityId: number; month: string; vehicles: number; rides:
  */
 export async function monthlyFromRides(opts: { months?: string[]; untilDay?: number } = {}): Promise<MonthRow[]> {
   const month = sql`to_char(start_time at time zone ${TZ}, 'YYYY-MM')`;
-  const conditions = [sql`city_id is not null`];
+  const conditions = [sql`city_id is not null`, shownRides()];
   if (opts.months?.length) conditions.push(sql`${month} in (${sql.join(opts.months.map((m) => sql`${m}`), sql`, `)})`);
   if (opts.untilDay) conditions.push(sql`extract(day from start_time at time zone ${TZ}) <= ${opts.untilDay}`);
   return db.execute<MonthRow>(sql`

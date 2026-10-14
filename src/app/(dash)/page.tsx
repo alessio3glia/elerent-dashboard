@@ -16,6 +16,7 @@ import { ridesSoFarOn } from "@/lib/yoy";
 import { METRICS, formatMetric } from "@/lib/metrics/catalog";
 import { inRange, sumByDay } from "@/lib/metrics/aggregate";
 import { lastMetricDay, lastSync, listCities, metricsBetween, recentAlerts, tasksForDay } from "@/lib/queries";
+import { citiesExcludedToday } from "@/lib/shown-data";
 
 const metric = (key: string) => METRICS.find((m) => m.key === key)!;
 const change = (a: number | null, b: number | null) => (a !== null && b ? (a - b) / b : null);
@@ -73,7 +74,8 @@ export default async function OverviewPage() {
     todayMoney(),
   ]);
   const pctById = (id: number) => cities.find((c) => c.id === id)?.revenueSharePct;
-  const health = await cityHealth(cities.filter((c) => c.active).map((c) => c.id));
+  const excludedToday = await citiesExcludedToday();
+  const health = await cityHealth(cities.filter((c) => c.active && !excludedToday.includes(c.id)).map((c) => c.id));
   const healthOrder: Record<Health, number> = { rosso: 0, giallo: 1, verde: 2 };
   const healthRows = health
     .map((h) => ({ ...h, city: cities.find((c) => c.id === h.cityId)! }))

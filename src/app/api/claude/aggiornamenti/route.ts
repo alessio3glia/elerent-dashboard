@@ -1,13 +1,15 @@
 import { isAuthorizedCron } from "@/lib/cron";
+import { listCities } from "@/lib/queries";
 import { CLAUDE_STATUSES, pendingForClaude, setClaudeStatus, type ClaudeStatus } from "@/lib/dashboard-updates";
 
 /**
  * Coda degli aggiornamenti scritti dai dipendenti per Claude, letta dalla sua routine automatica.
- * GET: richieste e note non ancora chiuse. POST {id, status, reply}: stato e risposta mostrati nella pagina.
+ * GET: richieste e note non ancora chiuse, più l'elenco delle città con il loro stato (per controllare le modifiche). POST {id, status, reply}: stato e risposta mostrati nella pagina.
  */
 export async function GET(request: Request) {
   if (!isAuthorizedCron(request)) return new Response("Non autorizzato", { status: 401 });
-  return Response.json({ pending: await pendingForClaude() });
+  const [pending, cities] = await Promise.all([pendingForClaude(), listCities({ all: true, withHidden: true })]);
+  return Response.json({ pending, cities: cities.map((c) => ({ id: c.id, name: c.name, slug: c.slug, active: c.active, hidden: c.hidden })) });
 }
 
 export async function POST(request: Request) {

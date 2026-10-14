@@ -32,6 +32,8 @@ export const cities = pgTable("cities", {
   /** Fee Elerent al mese per veicolo pagante (almeno una corsa nel mese di calendario), in euro. */
   feePerVehicleMonth: doublePrecision("fee_per_vehicle_month").notNull().default(15),
   active: boolean("active").notNull().default(true),
+  /** Nascosta: esclusa da tutte le viste e dai totali, i dati restano nel database. */
+  hidden: boolean("hidden").notNull().default(false),
   lastContactAt: timestamp("last_contact_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -381,3 +383,15 @@ export const dashboardUpdates = pgTable(
   },
   (t) => [index("dashboard_updates_city").on(t.cityId, t.startsOn)],
 );
+
+/** Periodi di una città da non mostrare (giorni compresi, ora italiana): i dati restano nel database. */
+export const dataExclusions = pgTable("data_exclusions", {
+  id: serial("id").primaryKey(),
+  cityId: integer("city_id")
+    .notNull()
+    .references(() => cities.id),
+  fromDay: date("from_day").notNull(),
+  toDay: date("to_day").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

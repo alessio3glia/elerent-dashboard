@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { ON_STREET } from "@/lib/atom/parse";
 import { db } from "@/lib/db";
 import { TZ } from "@/lib/dates";
+import { shownCity, shownRides } from "@/lib/shown-data";
 
 /** Un veicolo "manda segnale" se l'abbiamo sentito nelle ultime 24 ore. */
 export const SIGNAL_HOURS = 24;
@@ -30,13 +31,13 @@ export async function fleetStatusThisMonth() {
     paying as (
       select distinct on (vehicle_atom_id) vehicle_atom_id, city_id
       from rides, month_start
-      where vehicle_atom_id is not null and start_time >= month_start.t
+      where vehicle_atom_id is not null and start_time >= month_start.t and ${shownRides()}
       order by vehicle_atom_id, start_time desc
     ),
     others as (
       select v.city_id, ${signalling()} as on_air
       from vehicles v
-      where not exists (select 1 from paying p where p.vehicle_atom_id = v.atom_id)
+      where not exists (select 1 from paying p where p.vehicle_atom_id = v.atom_id) and ${shownCity(sql`v.city_id`)}
     )
     select city_id, sum(paganti)::int as paganti, sum(operativi)::int as operativi, sum(non_attivi)::int as non_attivi
     from (
@@ -64,7 +65,7 @@ export async function liveVehicles(): Promise<LiveVehicle[]> {
            (v.moved_at >= now() - interval '10 minutes' or upper(v.status) in ('IN_USE', 'IN_RIDE', 'RIDING', 'RIDE')) as moving,
            ${signalling()} as on_air
     from vehicles v
-    where v.lat is not null and v.lng is not null and (v.lat <> 0 or v.lng <> 0)`);
+    where v.lat is not null and v.lng is not null and (v.lat <> 0 or v.lng <> 0) and ${shownCity(sql`v.city_id`)}`);
   return rows.map((r) => ({
     id: r.id,
     number: r.number,
@@ -83,5 +84,5 @@ export async function recentRideEnds(minutes = 30) {
            (extract(epoch from now() - coalesce(end_time, start_time)) / 60)::float as minutes_ago
     from rides
     where start_time >= now() - interval '6 hours' and coalesce(end_time, start_time) >= now() - make_interval(mins => ${minutes}::int)
-      and end_lat is not null and end_lng is not null`);
+      and end_lat is not null and end_lng is not null and ${shownRides()}`);
 }

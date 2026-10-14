@@ -29,6 +29,7 @@ const CitySchema = z.object({
   revenueSharePct: z.coerce.number().min(0).max(100),
   feePerVehicleMonth: z.coerce.number().min(0),
   active: z.string().optional().transform((v) => v === "on"),
+  hidden: z.string().optional().transform((v) => v === "on"),
 });
 
 const slugify = (s: string) =>
