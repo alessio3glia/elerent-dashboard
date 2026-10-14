@@ -9,7 +9,7 @@ import { CLAUDE_STATUSES, pendingForClaude, setClaudeStatus, type ClaudeStatus }
 export async function GET(request: Request) {
   if (!isAuthorizedCron(request)) return new Response("Non autorizzato", { status: 401 });
   const [pending, cities] = await Promise.all([pendingForClaude(), listCities({ all: true, withHidden: true })]);
-  return Response.json({ pending, cities: cities.map((c) => ({ id: c.id, name: c.name, slug: c.slug, active: c.active, hidden: c.hidden })) });
+  return Response.json({ pending, cities: cities.map((c) => ({ id: c.id, name: c.name, slug: c.slug, active: c.active, hidden: c.hidden, centerLat: c.centerLat, centerLng: c.centerLng, radiusKm: c.radiusKm })) });
 }
 
 export async function POST(request: Request) {
