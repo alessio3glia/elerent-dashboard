@@ -23,17 +23,18 @@ export async function logout() {
   redirect("/login");
 }
 
-/** Primo accesso: se non esiste ancora nessun utente, crea l'admin indicato nelle variabili d'ambiente. */
+/**
+ * Accesso di emergenza: chi entra con ADMIN_EMAIL/ADMIN_PASSWORD delle variabili d'ambiente diventa (o resta) admin
+ * con quella password. Al primo accesso crea l'amministratore; se la password admin è stata dimenticata basta
+ * cambiare ADMIN_PASSWORD su Vercel, ridistribuire ed entrare con quella nuova.
+ */
 async function bootstrapAdmin(email: string, password: string) {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminEmail || !adminPassword || email !== adminEmail || password !== adminPassword) return;
-  const [existing] = await db.select({ id: schema.appUsers.id }).from(schema.appUsers).limit(1);
-  if (existing) return;
-  await db.insert(schema.appUsers).values({
-    email: adminEmail,
-    name: "Amministratore",
-    passwordHash: await bcrypt.hash(adminPassword, 10),
-    role: "admin",
-  });
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
+  await db
+    .insert(schema.appUsers)
+    .values({ email: adminEmail, name: "Amministratore", passwordHash, role: "admin" })
+    .onConflictDoUpdate({ target: schema.appUsers.email, set: { passwordHash, role: "admin" } });
 }
