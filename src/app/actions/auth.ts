@@ -12,7 +12,13 @@ export async function login(_prev: { error?: string } | undefined, form: FormDat
   await bootstrapAdmin(email, password);
   const [user] = await db.select().from(schema.appUsers).where(eq(schema.appUsers.email, email));
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return { error: "Email o password non corrette" };
+    // Messaggi precisi: la dashboard ha pochi utenti interni e capire cosa non va conta più che nascondere chi ha un accesso.
+    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    if (adminEmail && email === adminEmail) {
+      return { error: "Email admin giusta, ma la password non è quella di ADMIN_PASSWORD su Vercel. Se l'hai appena cambiata, fai Redeploy e riprova." };
+    }
+    if (!user) return { error: "Nessun accesso con questa email: controlla di usare quella scritta in ADMIN_EMAIL su Vercel." };
+    return { error: "Password sbagliata per questa email." };
   }
   await createSession({ id: user.id, email: user.email, name: user.name, role: user.role as "admin" | "operatore" });
   redirect("/");
