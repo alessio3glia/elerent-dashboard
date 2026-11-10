@@ -61,6 +61,9 @@ export async function GET(request: Request) {
     subscriptions,
     database: counts,
     // Velocità: se la funzione e il database sono in regioni diverse, ogni query attraversa l'oceano.
+    // Versione pubblicata e presenza (non il valore) delle variabili per l'accesso admin di emergenza.
+    version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+    adminLogin: { emailSet: Boolean(process.env.ADMIN_EMAIL?.trim()), passwordSet: Boolean(process.env.ADMIN_PASSWORD?.trim()) },
     speed: { queryMs: Date.now() - started, functionRegion: process.env.VERCEL_REGION ?? null, databaseRegion: dbRegion() },
   });
 }

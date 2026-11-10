@@ -30,8 +30,9 @@ export async function logout() {
  */
 async function bootstrapAdmin(email: string, password: string) {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminEmail || !adminPassword || email !== adminEmail || password !== adminPassword) return;
+  // Spazi o a capo incollati per sbaglio nella variabile su Vercel non devono bloccare l'accesso.
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  if (!adminEmail || !adminPassword || email !== adminEmail || password.trim() !== adminPassword) return;
   const passwordHash = await bcrypt.hash(adminPassword, 10);
   await db
     .insert(schema.appUsers)
