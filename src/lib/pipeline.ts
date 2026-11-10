@@ -7,6 +7,7 @@ import { nameCities, updateCityActivity } from "@/lib/sync/cities";
 import { getRecoverySettings, sendDue } from "@/lib/recovery";
 import { rescanSubscriptions } from "@/lib/sync/subscriptions";
 import { backfillStep, slugify, syncFromAtom } from "@/lib/sync/sync";
+import { REPAIR_LAST_DAYS, requestRepair } from "@/lib/sync/repair";
 
 const { syncState } = schema;
 const FULL_RECOMPUTE_KEY = "metrics_v2_full";
@@ -22,6 +23,8 @@ export async function assignMissingCities() {
 /** Job giornaliero: sync incrementale, KPI degli ultimi 3 giorni, task di oggi. */
 export async function runDaily() {
   const sync = await syncFromAtom();
+  // Controllo notturno: gli ultimi giorni si rileggono per intero dalla sync live, così nessun buco resta aperto.
+  await requestRepair(addDays(localDay(), -REPAIR_LAST_DAYS));
   // Una volta al giorno si rilegge tutto lo storico abbonamenti (la sync live prende solo i nuovi).
   await rescanSubscriptions();
   await nameCities(slugify);
