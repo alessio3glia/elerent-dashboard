@@ -195,6 +195,14 @@ export class AtomClient {
    * Assume che Atom le ordini dalla più recente (verificabile da Impostazioni → Diagnostica).
    */
   async ridesSince(since: Date, maxPages = 200, status: RideStatus = "ENDED"): Promise<AtomRide[]> {
+    return (await this.ridesSinceChecked(since, maxPages, status)).rides;
+  }
+
+  /**
+   * Come ridesSince, ma dice anche se si è arrivati davvero a `since`: se le pagine finiscono prima
+   * (sync ferma da molte ore), le corse in mezzo mancano e vanno rilette per giorno.
+   */
+  async ridesSinceChecked(since: Date, maxPages = 200, status: RideStatus = "ENDED"): Promise<{ rides: AtomRide[]; complete: boolean }> {
     const out: AtomRide[] = [];
     let bookmark: string | null = null;
     for (let i = 0; i < maxPages; i++) {
@@ -202,10 +210,10 @@ export class AtomClient {
       out.push(...page.rides);
       const last = page.rides.at(-1);
       const oldest = parseDate(last?.history_start_date ?? last?.start_time);
-      if (!page.next || (oldest && oldest < since)) break;
+      if (!page.next || (oldest && oldest < since)) return { rides: out, complete: true };
       bookmark = page.next;
     }
-    return out;
+    return { rides: out, complete: false };
   }
 
   /**

@@ -11,6 +11,8 @@ import { nameCities, updateCityActivity } from "@/lib/sync/cities";
 import { getSubscriptionsState, syncSubscriptions } from "@/lib/sync/subscriptions";
 import { acquireLock, activeAreas, countNewCustomers, getBackfillState, releaseLock, saveCustomers, saveRides, slugify, syncVehicles, updateLastRides } from "@/lib/sync/sync";
 import { shownRides } from "@/lib/shown-data";
+import { repairStep, requestRepair } from "@/lib/sync/repair";
+import { assignMissingCities } from "@/lib/pipeline";
 
 const { rides, vehicles, syncState } = schema;
 
@@ -37,6 +39,8 @@ type LiveState = {
   customers?: number;
   subscriptions?: number;
   recovered?: number;
+  repaired?: number;
+  repairPending?: string | null;
   error?: string | null;
 };
 
@@ -96,8 +100,27 @@ export async function liveSync(force = false) {
     await step("corse", async () => {
       const [{ last }] = await db.select({ last: max(rides.startTime) }).from(rides);
       const since = last ? new Date(new Date(last).getTime() - 3 * 3_600_000) : new Date(Date.now() - 86_400_000);
-      next.rides = await saveRides(await client.ridesSince(since, 40), vehicleCity, areas, since);
+      const fetched = await client.ridesSinceChecked(since, 40);
+      next.rides = await saveRides(fetched.rides, vehicleCity, areas, since);
       await updateLastRides(since);
+      // Sync ferma troppo a lungo: le 40 pagine non arrivano all'ultima corsa salvata. Le corse in mezzo
+      // non vanno perse: quei giorni si rileggono per intero con il filtro per data (passo "riparazione").
+      if (!fetched.complete) await requestRepair(localDay(since));
+    });
+
+    // Riparazione: giorni da rileggere per intero da Atom (buchi della sync, controllo notturno degli ultimi giorni).
+    await step("riparazione", async () => {
+      const repaired = await repairStep(client, 45_000);
+      next.repaired = repaired.days.length;
+      next.repairPending = repaired.pending;
+      if (repaired.days.length) {
+        const yesterday = addDays(localDay(), -1);
+        const from = repaired.days[0].day;
+        if (from <= yesterday) {
+          await assignMissingCities();
+          await computeMetrics(from, yesterday);
+        }
+      }
     });
 
     // Corse in revisione: finite ma non ancora chiuse da Atom. Contano nel fatturato del giorno.
