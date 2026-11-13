@@ -12,6 +12,12 @@ export async function login(_prev: { error?: string } | undefined, form: FormDat
   await bootstrapAdmin(email, password);
   const [user] = await db.select().from(schema.appUsers).where(eq(schema.appUsers.email, email));
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    // Non è un dipendente: può essere un investitore, che vede solo i propri veicoli.
+    const [investor] = await db.select().from(schema.investors).where(eq(schema.investors.email, email));
+    if (investor?.passwordHash && (await bcrypt.compare(password, investor.passwordHash))) {
+      await createSession({ id: investor.id, email: investor.email, name: investor.name, role: "investitore" });
+      redirect("/investitore");
+    }
     return { error: "Email o password non corrette" };
   }
   await createSession({ id: user.id, email: user.email, name: user.name, role: user.role as "admin" | "operatore" });
