@@ -2,9 +2,10 @@
 # Legge /api/claude/aggiornamenti e fa partire il task programmato di Claude
 # solo se ci sono richieste nuove, così il task non consuma crediti a vuoto.
 #
-# Secret richiesti nel repository (Settings > Secrets and variables > Actions):
-#   CRON_SECRET         stesso valore della variabile su Vercel (già presente)
-#   ROUTINE_FIRE_TOKEN  token dell'API trigger del task (claude.ai/code/routines > task > Modifica > API)
+# Usa solo il secret CRON_SECRET (già presente). Il token dell'API trigger del task
+# è in .github/aggiornamenti-fire-token.enc, cifrato con CRON_SECRET (scelta di Alessio, 15/11/2026).
+# Il token può solo avviare questo task. Per cambiarlo: claude.ai/code/routines > task > Modifica > API > Rigenera,
+# poi: printf '%s' "$TOKEN" | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -a -A -pass env:CRON_SECRET > .github/aggiornamenti-fire-token.enc
 name: Coda aggiornamenti
 
 on:
@@ -27,11 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
       - name: Leggi la coda e avvia il task se serve
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           FIRE_URL: https://api.anthropic.com/v1/claude_code/routines/trig_011Ke21EAst5n65orHE4PEFy/fire
-          FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
           FORCE: ${{ inputs.force || false }}
         run: |
           set -euo pipefail
@@ -56,10 +59,8 @@ jobs:
             exit 0
           fi
 
-          if [ -z "$FIRE_TOKEN" ]; then
-            echo "::error::Manca il secret ROUTINE_FIRE_TOKEN."
-            exit 1
-          fi
+          FIRE_TOKEN=$(openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -a -A -pass env:CRON_SECRET < .github/aggiornamenti-fire-token.enc)
+          echo "::add-mask::$FIRE_TOKEN"
 
           echo "Avvio il task: $motivo"
           curl -sS --fail-with-body --max-time 60 -X POST "$FIRE_URL" \
