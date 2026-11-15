@@ -1,0 +1,71 @@
+# Controllo gratuito della coda "Aggiornamenti dashboard".
+# Legge /api/claude/aggiornamenti e fa partire il task programmato di Claude
+# solo se ci sono richieste nuove, così il task non consuma crediti a vuoto.
+#
+# Secret richiesti nel repository (Settings > Secrets and variables > Actions):
+#   CRON_SECRET         stesso valore della variabile su Vercel (già presente)
+#   ROUTINE_FIRE_URL    "Fire URL" del task, da claude.ai/code/routines > task > Edit > Trigger + > API
+#   ROUTINE_FIRE_TOKEN  token generato nello stesso pannello (si vede una sola volta)
+name: Coda aggiornamenti
+
+on:
+  schedule:
+    # Ogni ora dalle 8 alle 20 circa, ora di Roma (orari GitHub in UTC, possono slittare).
+    - cron: "17 7-19 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Fai partire il task anche se la coda è vuota (prova)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: aggiornamenti-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Leggi la coda e avvia il task se serve
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
+          FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          set -euo pipefail
+          queue=$(curl -sS --fail-with-body --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://elerent-dashboard.vercel.app/api/claude/aggiornamenti)
+
+          # Richieste mai prese in carico.
+          nuove=$(jq '[.pending[] | select(.claudeStatus == null)] | length' <<<"$queue")
+          # Richieste rimaste "in lavorazione": si riprovano una volta al giorno (giro delle 12 UTC).
+          ferme=$(jq '[.pending[] | select(.claudeStatus == "in_lavorazione")] | length' <<<"$queue")
+          echo "Richieste nuove: $nuove, in lavorazione: $ferme"
+
+          motivo=""
+          if [ "$FORCE" = "true" ]; then motivo="prova manuale"
+          elif [ "$nuove" -gt 0 ]; then motivo="$nuove richieste nuove"
+          elif [ "$ferme" -gt 0 ] && [ "$(date -u +%H)" = "12" ]; then motivo="$ferme richieste ancora in lavorazione"
+          fi
+
+          if [ -z "$motivo" ]; then
+            echo "Niente da fare, il task non parte."
+            exit 0
+          fi
+
+          if [ -z "$FIRE_URL" ] || [ -z "$FIRE_TOKEN" ]; then
+            echo "::error::Mancano i secret ROUTINE_FIRE_URL o ROUTINE_FIRE_TOKEN."
+            exit 1
+          fi
+
+          echo "Avvio il task: $motivo"
+          curl -sS --fail-with-body --max-time 60 -X POST "$FIRE_URL" \
+            -H "Authorization: Bearer $FIRE_TOKEN" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "Avviato dal controllo coda GitHub: $motivo." '{text: $t}')"
