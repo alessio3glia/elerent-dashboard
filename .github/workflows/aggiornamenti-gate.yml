@@ -4,8 +4,7 @@
 #
 # Secret richiesti nel repository (Settings > Secrets and variables > Actions):
 #   CRON_SECRET         stesso valore della variabile su Vercel (già presente)
-#   ROUTINE_FIRE_URL    "Fire URL" del task, da claude.ai/code/routines > task > Edit > Trigger + > API
-#   ROUTINE_FIRE_TOKEN  token generato nello stesso pannello (si vede una sola volta)
+#   ROUTINE_FIRE_TOKEN  token dell'API trigger del task (claude.ai/code/routines > task > Modifica > API)
 name: Coda aggiornamenti
 
 on:
@@ -31,7 +30,7 @@ jobs:
       - name: Leggi la coda e avvia il task se serve
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
+          FIRE_URL: https://api.anthropic.com/v1/claude_code/routines/trig_011Ke21EAst5n65orHE4PEFy/fire
           FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
           FORCE: ${{ inputs.force || false }}
         run: |
@@ -57,8 +56,8 @@ jobs:
             exit 0
           fi
 
-          if [ -z "$FIRE_URL" ] || [ -z "$FIRE_TOKEN" ]; then
-            echo "::error::Mancano i secret ROUTINE_FIRE_URL o ROUTINE_FIRE_TOKEN."
+          if [ -z "$FIRE_TOKEN" ]; then
+            echo "::error::Manca il secret ROUTINE_FIRE_TOKEN."
             exit 1
           fi
 
