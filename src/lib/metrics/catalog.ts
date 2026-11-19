@@ -15,6 +15,8 @@ export type MetricDef = {
   format: MetricFormat;
   /** true se un aumento è positivo. */
   higherIsBetter: boolean;
+  /** true se viene solo dalla foto del mattino: nei giorni stimati (senza foto) non esiste. */
+  snapshotOnly?: boolean;
   daily: (r: Row) => number | null;
   /** Valore sull'intero periodo (somma o media, a seconda della metrica). */
   total: (rows: Row[]) => number | null;
@@ -74,17 +76,17 @@ export const METRICS: MetricDef[] = [
     total: (rows) => ratio(s(rows, (r) => r.vehiclesWithRide), s(rows, (r) => r.activeVehicles)),
   },
   {
-    key: "idleVehicles", label: "Veicoli fermi da 3 giorni", format: "num", higherIsBetter: false,
+    key: "idleVehicles", snapshotOnly: true, label: "Veicoli fermi da 3 giorni", format: "num", higherIsBetter: false,
     description: "Veicoli in strada senza corse negli ultimi 3 giorni (media sul periodo).",
     daily: (r) => r.idleVehicles, total: (rows) => mean(rows, (r) => r.idleVehicles),
   },
   {
-    key: "lowBattery", label: "Batteria sotto il 20%", format: "num", higherIsBetter: false,
+    key: "lowBattery", snapshotOnly: true, label: "Batteria sotto il 20%", format: "num", higherIsBetter: false,
     description: "Veicoli in strada quasi scarichi nella foto del mattino (media sul periodo).",
     daily: (r) => r.lowBattery, total: (rows) => mean(rows, (r) => r.lowBattery),
   },
   {
-    key: "stationaryVehicles", label: "Veicoli non spostati", format: "num", higherIsBetter: false,
+    key: "stationaryVehicles", snapshotOnly: true, label: "Veicoli non spostati", format: "num", higherIsBetter: false,
     description: "Veicoli nello stesso punto del giorno prima e senza corse: indica riposizionamento mancato.",
     daily: (r) => r.stationaryVehicles, total: (rows) => mean(rows, (r) => r.stationaryVehicles),
   },
