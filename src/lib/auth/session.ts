@@ -6,7 +6,14 @@ import { redirect } from "next/navigation";
 export const SESSION_COOKIE = "elerent_session";
 const MAX_AGE = 60 * 60 * 24 * 7;
 
-export type SessionUser = { id: number; email: string; name: string; role: "admin" | "operatore" };
+export type SessionUser = {
+  id: number;
+  email: string;
+  name: string;
+  role: "admin" | "operatore" | "investitore";
+  /** Presente quando un amministratore sta guardando la dashboard come un investitore: id dell'admin per tornare indietro. */
+  asAdminId?: number;
+};
 
 function secret() {
   const s = process.env.SESSION_SECRET;
@@ -37,7 +44,13 @@ export async function readSession(token: string | undefined): Promise<SessionUse
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    return { id: payload.id as number, email: payload.email as string, name: payload.name as string, role: payload.role as SessionUser["role"] };
+    return {
+      id: payload.id as number,
+      email: payload.email as string,
+      name: payload.name as string,
+      role: payload.role as SessionUser["role"],
+      ...(typeof payload.asAdminId === "number" ? { asAdminId: payload.asAdminId } : {}),
+    };
   } catch {
     return null;
   }
@@ -47,9 +60,19 @@ export async function getUser(): Promise<SessionUser | null> {
   return readSession((await cookies()).get(SESSION_COOKIE)?.value);
 }
 
+/** Dipendente Elerent (admin o operatore). Un investitore che apre la dashboard interna torna alla sua pagina. */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getUser();
   if (!user) redirect("/login");
+  if (user.role === "investitore") redirect("/investitore");
+  return user;
+}
+
+/** Investitore loggato: `id` è l'id nella tabella investors. */
+export async function requireInvestor(): Promise<SessionUser> {
+  const user = await getUser();
+  if (!user) redirect("/login");
+  if (user.role !== "investitore") redirect("/");
   return user;
 }
 

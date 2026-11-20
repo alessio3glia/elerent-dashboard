@@ -395,3 +395,38 @@ export const dataExclusions = pgTable("data_exclusions", {
   reason: text("reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Investitori: persone che possiedono uno o più veicoli della flotta. Entrano con email e password create
+ * dall'amministratore e vedono solo i propri veicoli (pagina /investitore).
+ */
+export const investors = pgTable("investors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  /** Quota dell'investitore sul ricavo lordo delle corse dei suoi veicoli, es. 50 = 50%. Vuota: si mostra solo il lordo. */
+  sharePct: doublePrecision("share_pct"),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Veicoli di ogni investitore (per ID Atom), con il periodo di possesso: contano solo le corse dentro il periodo. */
+export const investorVehicles = pgTable(
+  "investor_vehicles",
+  {
+    id: serial("id").primaryKey(),
+    investorId: integer("investor_id")
+      .notNull()
+      .references(() => investors.id, { onDelete: "cascade" }),
+    vehicleAtomId: integer("vehicle_atom_id").notNull(),
+    /** Dal giorno (compreso, ora italiana); vuoto = da sempre. */
+    fromDay: date("from_day"),
+    /** Fino al giorno (compreso); vuoto = ancora suo. */
+    toDay: date("to_day"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("investor_vehicles_investor").on(t.investorId), index("investor_vehicles_vehicle").on(t.vehicleAtomId)],
+);
+
+export type Investor = typeof investors.$inferSelect;

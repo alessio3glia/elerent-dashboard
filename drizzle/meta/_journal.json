@@ -92,6 +92,13 @@
       "when": 1791978599183,
       "tag": "0012_dati_nascosti",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794556001855,
+      "tag": "0013_investitori",
+      "breakpoints": true
     }
   ]
 }

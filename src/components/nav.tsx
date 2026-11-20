@@ -43,7 +43,7 @@ function NavLink({ href, className, children }: { href: string; className: strin
 
 export function Nav({ isAdmin, openTasks }: { isAdmin: boolean; openTasks: number }) {
   const path = usePathname();
-  const links = isAdmin ? [...LINKS, { href: "/impostazioni", label: "Impostazioni" }] : LINKS;
+  const links = isAdmin ? [...LINKS, { href: "/investitori", label: "Investitori" }, { href: "/impostazioni", label: "Impostazioni" }] : LINKS;
   return (
     <nav className="flex gap-1 overflow-x-auto md:flex-col">
       {links.map((l) => {
