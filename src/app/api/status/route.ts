@@ -31,11 +31,14 @@ export async function GET(request: Request) {
     getSubscriptionsState(),
     getBackfillStatus(),
     isLocked(BACKFILL_LOCK),
-    db.execute<{ rides: number; first_ride: string | null; last_ride: string | null; customers: number; vehicles: number; cities: number; metric_days: number; subscriptions: number; vehicles_signal_24h: number }>(sql`
+    db.execute<{ rides: number; first_ride: string | null; last_ride: string | null; customers: number; vehicles: number; cities: number; metric_days: number; subscriptions: number; vehicles_signal_24h: number; km_total: number; rides_with_km: number; riding_customers: number }>(sql`
       select (select count(*) from rides)::int as rides,
              (select min(start_time)::date::text from rides) as first_ride,
              (select max(start_time)::date::text from rides) as last_ride,
              (select count(*) from customers)::int as customers,
+             (select count(distinct customer_atom_id) from rides)::int as riding_customers,
+             (select coalesce(round(sum(km)::numeric, 1), 0) from rides)::float as km_total,
+             (select count(km) from rides)::int as rides_with_km,
              (select count(*) from subscriptions)::int as subscriptions,
              (select count(*) from vehicles where last_signal_at >= now() - interval '24 hours')::int as vehicles_signal_24h,
              (select count(*) from vehicles)::int as vehicles,
