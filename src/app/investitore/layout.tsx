@@ -1,4 +1,5 @@
 import { logout } from "@/app/actions/auth";
+import { backToAdmin } from "@/app/actions/investors";
 import { requireInvestor } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,14 @@ export default async function InvestorLayout({ children }: LayoutProps<"/investi
   const user = await requireInvestor();
   return (
     <div className="min-h-screen">
+      {user.asAdminId && (
+        <div className="flex flex-wrap items-center justify-center gap-3 bg-brand px-4 py-2 text-sm font-medium text-black">
+          Stai vedendo la dashboard come {user.name}: è esattamente quello che vede l&apos;investitore.
+          <form action={backToAdmin}>
+            <button className="rounded-md bg-black px-3 py-1 text-xs font-semibold text-brand">Torna alla dashboard Elerent</button>
+          </form>
+        </div>
+      )}
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 md:px-8">
           <div className="text-xl font-bold tracking-tight">

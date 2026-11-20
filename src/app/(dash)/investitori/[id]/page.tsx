@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { deleteInvestor, removeVehicle, updateVehiclePeriod } from "@/app/actions/investors";
+import { deleteInvestor, removeVehicle, updateVehiclePeriod, viewAsInvestor } from "@/app/actions/investors";
 import { InvestorView } from "@/components/investor-view";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
@@ -34,7 +34,13 @@ export default async function InvestorDetailPage({ params }: PageProps<"/investi
   return (
     <>
       <PageHeader title={investor.name} subtitle={`Accesso: ${investor.email} · ${investor.sharePct === null ? "vede solo il lordo" : `quota ${investor.sharePct}% sul lordo`}`}>
-        <Link href="/investitori" className="text-sm text-ink-2 hover:text-brand">← Investitori</Link>
+        <div className="flex items-center gap-4">
+          <Link href="/investitori" className="text-sm text-ink-2 hover:text-brand">← Investitori</Link>
+          <form action={viewAsInvestor}>
+            <input type="hidden" name="id" value={investor.id} />
+            <button className="btn-primary">Entra come {investor.name}</button>
+          </form>
+        </div>
       </PageHeader>
 
       <Card title="Dati e accesso" className="mb-6">

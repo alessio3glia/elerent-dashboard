@@ -5,7 +5,7 @@ import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/session";
+import { createSession, getUser, requireAdmin } from "@/lib/auth/session";
 import { db, schema } from "@/lib/db";
 
 type State = { error?: string; ok?: string } | undefined;
@@ -134,4 +134,23 @@ export async function removeVehicle(form: FormData) {
     .where(eq(schema.investorVehicles.id, Number(form.get("id"))))
     .returning({ investorId: schema.investorVehicles.investorId });
   if (row) revalidatePath(`/investitori/${row.investorId}`);
+}
+
+/** L'amministratore entra come l'investitore e vede esattamente la sua pagina, senza conoscerne la password. */
+export async function viewAsInvestor(form: FormData) {
+  const admin = await requireAdmin();
+  const [investor] = await db.select().from(schema.investors).where(eq(schema.investors.id, Number(form.get("id"))));
+  if (!investor) redirect("/investitori");
+  await createSession({ id: investor.id, email: investor.email, name: investor.name, role: "investitore", asAdminId: admin.id });
+  redirect("/investitore");
+}
+
+/** Torna alla dashboard interna dopo aver guardato come un investitore. */
+export async function backToAdmin() {
+  const user = await getUser();
+  if (!user?.asAdminId) redirect("/login");
+  const [admin] = await db.select().from(schema.appUsers).where(eq(schema.appUsers.id, user.asAdminId));
+  if (!admin || admin.role !== "admin") redirect("/login");
+  await createSession({ id: admin.id, email: admin.email, name: admin.name, role: "admin" });
+  redirect(`/investitori/${user.id}`);
 }

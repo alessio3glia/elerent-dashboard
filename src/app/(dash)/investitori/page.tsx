@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
+import { viewAsInvestor } from "@/app/actions/investors";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -36,7 +37,13 @@ export default async function InvestorsPage() {
                   <td className="tabular text-right">{r.vehicles}</td>
                   <td className="tabular text-right">{r.share_pct === null ? "solo lordo" : `${r.share_pct}%`}</td>
                   <td className="text-right">
-                    <Link href={`/investitori/${r.id}`} className="text-sm text-brand hover:underline">Apri</Link>
+                    <span className="flex items-center justify-end gap-4">
+                      <form action={viewAsInvestor}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <button className="text-sm text-ink-2 hover:text-brand">Entra come investitore</button>
+                      </form>
+                      <Link href={`/investitori/${r.id}`} className="text-sm text-brand hover:underline">Apri</Link>
+                    </span>
                   </td>
                 </tr>
               ))}
